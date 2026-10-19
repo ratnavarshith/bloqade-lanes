@@ -1,0 +1,304 @@
+{
+ "args": {
+  "mode": "nonclifford",
+  "examples": 100,
+  "strategies": "all",
+  "jobs": 4,
+  "seed": 0,
+  "min_qubits": 2,
+  "max_qubits": 6,
+  "min_ops": 1,
+  "max_ops": 12,
+  "repro_dir": "repros/nonclifford",
+  "out": "results/nonclifford.json",
+  "list": false
+ },
+ "wall_seconds": 135.0,
+ "results": [
+  {
+   "strategy": "astar",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 22.4,
+   "check_seconds": 21.6,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "dfs",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 22.1,
+   "check_seconds": 21.3,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "bfs",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 22.0,
+   "check_seconds": 21.2,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "ids",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 22.2,
+   "check_seconds": 21.4,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "greedy",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 20.3,
+   "check_seconds": 19.8,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "push-rotate",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 20.4,
+   "check_seconds": 19.9,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "entropy",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 23.9,
+   "check_seconds": 23.4,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "cascade-ids",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 20.7,
+   "check_seconds": 20.2,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "cascade-dfs",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 24.2,
+   "check_seconds": 23.7,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "cascade-entropy",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 25.4,
+   "check_seconds": 24.8,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "pipeline_default",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 32.5,
+   "check_seconds": 31.9,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "pipeline_route_all",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 1,
+   "seconds": 40.2,
+   "check_seconds": 39.6,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {},
+   "notes": []
+  },
+  {
+   "strategy": "loose_goal",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 2,
+   "seconds": 64.2,
+   "check_seconds": 22.6,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {
+    "expected: refuses to spuriously entangle bystander atoms": {
+     "status": "expected",
+     "n_qubits": 5,
+     "n_ops": 3,
+     "ops": [
+      [
+       "cx",
+       0,
+       2
+      ],
+      [
+       "bcz",
+       [
+        [
+         0,
+         1
+        ]
+       ]
+      ],
+      [
+       "cx",
+       2,
+       3
+      ]
+     ],
+     "measure": false,
+     "detail": "the CZ routing solver produced a layout in which a non-participating atom sits at a CZ partner site whose partner is also occupied; the global CZ pulse would spuriously entangle these bystanders (controls=(0,), targets=(3,))",
+     "kernel": "from kirin.dialects import ilist\n\nfrom bloqade import squin\n\n\n@squin.kernel\ndef main():\n    reg = squin.qalloc(5)\n    squin.cx(reg[0], reg[2])\n    squin.broadcast.cz(ilist.IList([reg[0]]), ilist.IList([reg[1]]))\n    squin.cx(reg[2], reg[3])\n",
+     "repro": "repros/nonclifford/loose_goal__expected_refuses_to_spuriously_entangle_bystande__1eb87d.py"
+    }
+   },
+   "notes": []
+  },
+  {
+   "strategy": "receding_horizon",
+   "mode": "nonclifford",
+   "examples_requested": 100,
+   "examples_run": 100,
+   "completed_clean_pass": true,
+   "passes": 2,
+   "seconds": 62.9,
+   "check_seconds": 22.8,
+   "outcomes": {
+    "ok": 100
+   },
+   "samples": {},
+   "minimal_failures": {
+    "expected: refuses to spuriously entangle bystander atoms": {
+     "status": "expected",
+     "n_qubits": 4,
+     "n_ops": 2,
+     "ops": [
+      [
+       "bcz",
+       [
+        [
+         0,
+         2
+        ],
+        [
+         1,
+         3
+        ]
+       ]
+      ],
+      [
+       "cx",
+       0,
+       2
+      ]
+     ],
+     "measure": false,
+     "detail": "a non-participating atom sits at a CZ partner site whose partner is also occupied; the global CZ pulse would spuriously entangle these bystanders alongside the intended pairs (controls=(0,), targets=(2,))",
+     "kernel": "from kirin.dialects import ilist\n\nfrom bloqade import squin\n\n\n@squin.kernel\ndef main():\n    reg = squin.qalloc(4)\n    squin.broadcast.cz(ilist.IList([reg[0], reg[1]]), ilist.IList([reg[2], reg[3]]))\n    squin.cx(reg[0], reg[2])\n",
+     "repro": "repros/nonclifford/receding_horizon__expected_refuses_to_spuriously_entangle_bystande__1eb87d.py"
+    }
+   },
+   "notes": []
+  }
+ ]
+}
