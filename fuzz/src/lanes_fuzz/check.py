@@ -66,10 +66,31 @@ def is_clifford(spec: KernelSpec) -> bool:
     return not any(op[0] in NON_CLIFFORD_OPS for op in spec.ops)
 
 
+def expected_category(exc: BaseException) -> str | None:
+    """The category of a documented, intentional refusal; ``None`` for anything else.
+
+    Both are ``PlacementError``s the placement code raises on purpose:
+
+    * the routing solver found no plan inside its budget or none exists;
+    * the no-return strategies refuse a layout whose global CZ pulse would
+      entangle bystander atoms (``tests/heuristics/test_no_return_base.py``
+      asserts on this message).
+
+    They are recorded and reported with their reason, never counted as failures.
+    """
+    if isinstance(exc, PlacementError):
+        text = str(exc)
+        if "CZ routing solver failed" in text:
+            return "expected: routing solver failed"
+        if "would spuriously entangle" in text:
+            return "expected: refuses to spuriously entangle bystander atoms"
+    return None
+
+
 def signature(exc: BaseException) -> str:
     """A stable, coarse label for an exception: type plus its normalized message."""
     head = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
-    head = re.sub(r"0x[0-9a-fA-F]+", "0x#", head)
+    head = re.sub(r"0x[0-9a-fA-F]+", "<addr>", head)
     head = re.sub(r"\d+", "#", head)
     head = re.sub(r"\s+", " ", head)
     return f"{type(exc).__name__}: {head[:80]}"
@@ -125,12 +146,11 @@ def check_kernel(
 
     try:
         move_mt = compile_to_move(kernel, strategy, spec.measure)
-    except PlacementError as exc:
-        if "CZ routing solver failed" in str(exc):
-            return done("expected", "expected: routing solver failed", str(exc))
+    except Exception as exc:  # noqa: BLE001 - anything not allow-listed is a finding
+        expected = expected_category(exc)
+        if expected is not None:
+            return done("expected", expected, str(exc))
         return done("failure", f"compile: {signature(exc)}", str(exc))
-    except Exception as exc:  # noqa: BLE001 - every other exception is a finding
-        return done("failure", f"compile: {signature(exc)}", repr(exc))
 
     if plant_move is not None:
         move_mt = plant_move(move_mt)

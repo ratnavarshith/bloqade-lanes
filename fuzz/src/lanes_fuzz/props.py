@@ -85,7 +85,9 @@ def make_property(
     def prop(spec: KernelSpec) -> None:
         outcome = check_kernel(spec, strategy, plant)
         ledger.record(spec, outcome)
-        if outcome.failed and outcome.category not in known:
+        # Expected refusals are raised too, so they are shrunk and get a repro;
+        # the summary keeps them apart from real failures.
+        if outcome.status != "ok" and outcome.category not in known:
             raise failure_type(outcome.category)(spec, strategy, outcome)
 
     return prop
@@ -170,6 +172,7 @@ def run_strategy(
         "samples": ledger.samples,
         "minimal_failures": {
             category: {
+                "status": f.outcome.status,
                 "n_qubits": f.spec.n_qubits,
                 "n_ops": len(f.spec.ops),
                 "ops": [list(op) for op in f.spec.ops],

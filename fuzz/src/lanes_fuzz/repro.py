@@ -80,12 +80,8 @@ def reproduce() -> str:
     strategy = {strategy_code}
     try:
         move_mt = compile_to_move(main, strategy, HAS_MEASURE)
-    except PlacementError as exc:
-        if "CZ routing solver failed" in str(exc):
-            return "expected: routing solver failed"
-        return "compile: " + signature(exc)
     except Exception as exc:  # noqa: BLE001
-        return "compile: " + signature(exc)
+        return expected_category(exc) or "compile: " + signature(exc)
     if any(isinstance(s, place.CZ) for s in move_mt.callable_region.walk()):
         return "not lowered: place.CZ left"
     try:
@@ -157,7 +153,11 @@ def render_repro(
         imports=IMPORTS,
         kernel_source=render(spec).rstrip(),
         equiv_source=equiv_source,
-        signature_source=inspect.getsource(check.signature),
+        signature_source=(
+            inspect.getsource(check.expected_category)
+            + "\n\n"
+            + inspect.getsource(check.signature)
+        ),
         compile_source=inspect.getsource(check.compile_to_move),
         validate_source=inspect.getsource(check.rust_validate),
         plant_source=(

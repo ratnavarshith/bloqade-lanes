@@ -90,14 +90,16 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _line(summary: dict) -> str:
-    failures = summary["minimal_failures"]
+    found = summary["minimal_failures"]
+    failures = sum(1 for f in found.values() if f["status"] == "failure")
     ok = summary["outcomes"].get("ok", 0)
     expected = sum(
         n for c, n in summary["outcomes"].items() if c.startswith("expected")
     )
     return (
         f"{summary['strategy']:<20} examples={summary['examples_run']:<4} "
-        f"ok={ok:<4} expected={expected:<3} failure_categories={len(failures)} "
+        f"ok={ok:<4} expected={expected:<3} "
+        f"expected_categories={len(found) - failures} failure_categories={failures} "
         f"passes={summary['passes']} {summary['seconds']}s"
     )
 
