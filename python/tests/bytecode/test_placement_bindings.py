@@ -90,6 +90,28 @@ def test_bound_stats_is_typed_when_bounded_and_none_otherwise():
         assert stats.optimality_gap is not None
 
 
+def test_bus_cut_completion_bound_is_accepted_and_reported():
+    assert EntropyOptions(completion_bound="bus_cut").completion_bound == "bus_cut"
+    with pytest.raises(ValueError, match="bus_cut"):
+        EntropyOptions(completion_bound="nonsense")
+
+    engine = _engine()
+    initial = {0: _loc(0), 1: _loc(1)}
+    target = {0: _loc(3), 1: _loc(4)}
+    results = {}
+    for kind in ("weighted_distance", "bus_cut"):
+        search = MoveSearch.entropy().with_entropy_options(
+            EntropyOptions(completion_bound=kind)
+        )
+        result = TargetSolver(engine, search).solve(initial, target, [], 2000)
+        assert isinstance(result.bound_stats, BoundStats)
+        results[kind] = result.bound_stats
+    assert (
+        results["bus_cut"].root_lower_bound
+        >= results["weighted_distance"].root_lower_bound
+    )
+
+
 def test_an_invalid_request_raises_its_typed_error():
     """Each ``ConfigError`` variant arrives as its own ``SearchConfigError``
     subclass, still a ``ValueError``, carrying the variant's fields."""

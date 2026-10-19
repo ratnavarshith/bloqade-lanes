@@ -90,11 +90,14 @@ class RustPlacementTraversal:
     ``None`` (default) prunes a branch only once its accumulated cost alone
     reaches the incumbent's. ``"weighted_distance"`` additionally prunes when
     ``g + h`` reaches it, where ``h`` is the max objective-weighted distance
-    over unresolved atoms. Affects which subtrees are explored, never candidate
-    generation, and never returns a worse plan.
+    over unresolved atoms. ``"bus_cut"`` prunes with ``max(h0, |R|)`` instead,
+    where ``R`` is the set of bus groups some atom cannot reach its target
+    without. Affects which subtrees are explored, never candidate generation,
+    and never returns a worse plan.
 
-    Only consulted by the entropy strategy, and ignored for loose-goal (CZ
-    pair) solves where the bound is not admissible.
+    Consulted by the entropy strategy, and by the A* refinement of a cascade
+    (which uses ``"weighted_distance"`` when this is ``None``). Ignored for
+    loose-goal (CZ pair) solves where the bound is not admissible.
     """
     block_spectators: bool = True
     """Scope each CZ solve to the participating qubits.

@@ -1129,9 +1129,12 @@ class EntropyOptions:
     def completion_bound(self) -> str | None:
         """Admissible completion bound for branch-and-bound pruning.
 
-        ``"weighted_distance"`` or ``None`` (no bound). Affects which subtrees
-        the entropy search explores, never candidate generation, and never
-        yields a worse plan.
+        ``"weighted_distance"``, ``"bus_cut"`` or ``None`` (no bound).
+        ``"bus_cut"`` is ``max(h0, |R|)``, where ``R`` is the set of bus groups
+        some atom cannot reach its target without. The choice also selects the
+        bound that gates a cascade's A* refinement (``"weighted_distance"`` when
+        unset). Affects which subtrees the search explores, never candidate
+        generation, and never yields a worse plan.
         """
 
     @property

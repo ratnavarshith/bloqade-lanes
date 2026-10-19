@@ -1352,9 +1352,10 @@ impl PyEntropyOptions {
         let completion_bound = match completion_bound {
             None => None,
             Some("weighted_distance") => Some(BoundKind::WeightedDistance),
+            Some("bus_cut") => Some(BoundKind::BusCut),
             Some(other) => {
                 return Err(PyValueError::new_err(format!(
-                    "unknown completion_bound '{other}'; expected 'weighted_distance' or None"
+                    "unknown completion_bound '{other}'; expected 'weighted_distance', 'bus_cut' or None"
                 )));
             }
         };
@@ -1373,12 +1374,13 @@ impl PyEntropyOptions {
         })
     }
 
-    /// Completion bound in use: `"weighted_distance"` or `None`.
+    /// Completion bound in use: `"weighted_distance"`, `"bus_cut"` or `None`.
     #[getter]
     fn completion_bound(&self) -> Option<&'static str> {
         match self.inner.completion_bound {
             None => None,
             Some(BoundKind::WeightedDistance) => Some("weighted_distance"),
+            Some(BoundKind::BusCut) => Some("bus_cut"),
         }
     }
 
