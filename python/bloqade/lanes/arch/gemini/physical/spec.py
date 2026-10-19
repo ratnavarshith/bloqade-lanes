@@ -10,7 +10,8 @@ from bloqade.lanes.bytecode._native import ArchSpec as _RustArchSpec
 # Grid: x=[0,2,10,12,20,22,...] (alternating 2/8 spacing), y=[0,10,20,30,40]
 #
 # Site buses: 3D hypercube on 8 sites (3 buses)
-# Word buses: 9 merged column-pair shifts + 1 cross-gap (10 buses)
+# Word buses: 9 column-pair shifts, each split into two buses by source
+#   column pair (words 0,4,8,... and 2,6,10,...), + 1 cross-gap (19 buses)
 # Entangling pairs: [[0,1],[2,3],...,[18,19]]
 
 
