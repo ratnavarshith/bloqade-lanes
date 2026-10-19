@@ -358,6 +358,13 @@ fn solve_with_engine_impl(
         entropy_opts,
         Some(engine.blended_cache()),
     );
+    buscut_diag(
+        &root,
+        &target_encoded,
+        engine.index(),
+        &blocked_encoded,
+        &result,
+    );
 
     // Opt-in reliability net. Push and Rotate is complete, so this converts
     // "the search gave up" into either a schedule or a proof that none
@@ -375,6 +382,58 @@ fn solve_with_engine_impl(
         );
     }
     Ok(result)
+}
+
+/// Diagnostic only (branch `bus-cut-diag`, never merged): append one row per
+/// solve root to `$BUSCUT_DIAG_PATH` with h0, the bus-cut parts and the final cost.
+fn buscut_diag(
+    root: &Config,
+    targets: &[(u32, u64)],
+    index: &crate::primitives::lane_index::LaneIndex,
+    blocked: &HashSet<u64>,
+    result: &SolveResult,
+) {
+    use crate::bounds::{BusCutBound, CompletionBound, WeightedDistanceBound};
+    use crate::cost::UniformCost;
+    use std::io::Write;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+    static LOCK: Mutex<()> = Mutex::new(());
+
+    let Ok(path) = std::env::var("BUSCUT_DIAG_PATH") else {
+        return;
+    };
+    let case = std::env::var("BUSCUT_DIAG_CASE").unwrap_or_default();
+    let strategy = std::env::var("BUSCUT_DIAG_STRATEGY").unwrap_or_default();
+    let h0 = WeightedDistanceBound::new(&UniformCost, targets, index, blocked).estimate(root);
+    let bus = BusCutBound::new(&UniformCost, targets, index, blocked);
+    let (r, strong) = bus.parts(root);
+    let h = bus.estimate(root);
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let fresh = std::fs::metadata(&path).map_or(true, |m| m.len() == 0);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .expect("open BUSCUT_DIAG_PATH");
+    if fresh {
+        writeln!(
+            file,
+            "case,strategy,solve_id,n_atoms,h0,r,strong,h,cost,status"
+        )
+        .unwrap();
+    }
+    writeln!(
+        file,
+        "{case},{strategy},{id},{},{h0},{r},{strong},{h},{},{:?}",
+        targets.len(),
+        result.cost,
+        result.status
+    )
+    .unwrap();
 }
 
 /// The search failed: finish with Push and Rotate.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import statistics
 import time
 from collections.abc import Callable
@@ -136,6 +137,8 @@ class BenchmarkRunner:
         return rows
 
     def _run_one(self, job: BenchmarkJob) -> BenchmarkRow:
+        os.environ["BUSCUT_DIAG_CASE"] = job.case.case_id
+        os.environ["BUSCUT_DIAG_STRATEGY"] = job.strategy.strategy_id
         elapsed_samples: list[float] = []
         move_mt = None
         artifacts: _RunArtifacts | None = None

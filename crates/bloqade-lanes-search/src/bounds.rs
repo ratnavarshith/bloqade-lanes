@@ -535,6 +535,14 @@ impl CompletionBound for BusCutBound {
     }
 
     fn estimate(&self, config: &Config) -> f64 {
+        let (r, strong) = self.parts(config);
+        r.max(strong)
+    }
+}
+
+impl BusCutBound {
+    /// Diagnostic: `(|R|, max_i (d_i + |R \ U_i|))`, both infinite if infeasible.
+    pub fn parts(&self, config: &Config) -> (f64, f64) {
         let mut inline = [0_u64; INLINE_WORDS];
         let mut spill: Vec<u64>;
         let all: &mut [u64] = if self.words <= INLINE_WORDS {
@@ -547,7 +555,7 @@ impl CompletionBound for BusCutBound {
         // R: every group some atom cannot do without.
         for &(qid, target_enc) in &self.targets {
             match self.atom(config, qid, target_enc) {
-                Atom::Infeasible => return f64::INFINITY,
+                Atom::Infeasible => return (f64::INFINITY, f64::INFINITY),
                 Atom::Idle => {}
                 Atom::Moving { row, col, .. } => {
                     let base = (col * self.n_loc + row) * self.words;
@@ -558,16 +566,17 @@ impl CompletionBound for BusCutBound {
             }
         }
 
-        let mut worst = all.iter().map(|w| w.count_ones()).sum::<u32>() as f64;
+        let r = all.iter().map(|w| w.count_ones()).sum::<u32>() as f64;
+        let mut strong = 0.0_f64;
         for &(qid, target_enc) in &self.targets {
             if let Atom::Moving { d, col, .. } = self.atom(config, qid, target_enc) {
                 let outside: u32 = (0..self.words)
                     .map(|w| (all[w] & !self.used[col * self.words + w]).count_ones())
                     .sum();
-                worst = worst.max(d + f64::from(outside));
+                strong = strong.max(d + f64::from(outside));
             }
         }
-        worst
+        (r, strong)
     }
 }
 
