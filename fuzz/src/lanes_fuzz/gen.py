@@ -180,8 +180,9 @@ def _measure(cfg: GenConfig) -> st.SearchStrategy[bool]:
     return st.booleans()
 
 
-def kernel_specs(cfg: GenConfig = GenConfig()) -> st.SearchStrategy[KernelSpec]:
-    """Strategy over :class:`KernelSpec` drawn according to ``cfg``."""
+def kernel_specs(cfg: GenConfig | None = None) -> st.SearchStrategy[KernelSpec]:
+    """Strategy over :class:`KernelSpec` drawn according to ``cfg`` (Clifford defaults)."""
+    cfg = cfg if cfg is not None else GenConfig()
 
     def for_size(n: int) -> st.SearchStrategy[KernelSpec]:
         return st.builds(

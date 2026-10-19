@@ -1,7 +1,7 @@
 """The kernel generator produces valid kernels and honours its parameters."""
 
 import pytest
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
 from lanes_fuzz.gen import (
     CLIFFORD_GATES,
     NON_CLIFFORD_GATES,

@@ -109,6 +109,4 @@ def physical_arch():
 
 def build_strategy(name: str):
     """A fresh strategy object (they carry per-compile counters)."""
-    return eval(
-        STRATEGY_CODE[name], {**_NAMESPACE, "arch": physical_arch()}
-    )  # noqa: S307
+    return eval(STRATEGY_CODE[name], {**_NAMESPACE, "arch": physical_arch()})
