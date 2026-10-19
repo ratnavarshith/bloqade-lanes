@@ -13,6 +13,7 @@ kernels finishes with every failure known; that last pass supplies the counts.
 from __future__ import annotations
 
 import time
+from builtins import BaseExceptionGroup  # builtin from 3.11; this project needs 3.12
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -91,9 +92,7 @@ def make_property(
 
 
 def _flatten(exc: BaseException) -> list[BaseException]:
-    if isinstance(
-        exc, BaseExceptionGroup
-    ):  # noqa: F821 (builtin from 3.11; this project needs 3.12)
+    if isinstance(exc, BaseExceptionGroup):
         return [leaf for inner in exc.exceptions for leaf in _flatten(inner)]
     return [exc]
 
