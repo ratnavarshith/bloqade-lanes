@@ -23,9 +23,10 @@
 //! generator's score perturbation — but a *pruning* decision may not use any of
 //! those. There is deliberately no weight parameter anywhere in this trait.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 
+use crate::cost::UniformCost;
 use crate::primitives::config::Config;
 use crate::primitives::lane_index::LaneIndex;
 use crate::primitives::weighted_distance::WeightedDistanceTable;
@@ -294,6 +295,277 @@ impl<O: Objective> CompletionBound for WeightedDistanceBound<O> {
                 return f64::INFINITY; // no unblocked route to the target
             };
             worst = worst.max(d);
+        }
+        worst
+    }
+}
+
+/// Words of group-mask storage `BusCutBound::estimate` keeps on the stack.
+/// Architectures with more than `64 * INLINE_WORDS` bus groups spill to the heap.
+const INLINE_WORDS: usize = 4;
+
+/// How one targeted atom enters a [`BusCutBound`] estimate.
+enum Atom {
+    /// A targeted qubit is absent, or its target is unreachable from an
+    /// unblocked site: no completion exists.
+    Infeasible,
+    /// Already at its target, or parked on a blocked site (see
+    /// [`WeightedDistanceBound`]): contributes nothing.
+    Idle,
+    /// Must still move: `d` shots at least, from table row `row` to column `col`.
+    Moving { d: f64, row: usize, col: usize },
+}
+
+/// The bus-cut bound, for [`UniformCost`] only.
+///
+/// A *group* is `(zone, bus, move type, direction)` — the key
+/// `check_lane_group_consistency` enforces — and every shot uses exactly one.
+/// Under `UniformCost` a shot costs `1`, so counting shots is counting cost.
+///
+/// ```text
+/// h = max( |R|,  max_i ( d_i + |R \ U_i| ) )
+/// ```
+///
+/// over the unresolved atoms `i`, where, on the lane graph `H` with the solve's
+/// `blocked` sites carved out (the graph [`WeightedDistanceBound`] uses):
+///
+/// - `d_i` is the hop distance from atom `i` to its target in `H`;
+/// - group `G` is **required** for `i` when its target is unreachable from its
+///   location once `G`'s lanes are removed from `H`, and `R` is the union of the
+///   required groups over all atoms;
+/// - `U_i` is every group with a lane whose two endpoints both reach `i`'s
+///   target in `H`. It is a superset of the groups on *any* walk from `i` to its
+///   target, not just the shortest ones.
+///
+/// # Why it is admissible
+///
+/// Any completion moves atom `i` along a walk in `H` (occupancy and collisions
+/// only remove moves). If `G` is required for `i`, every such walk crosses a
+/// lane of `G`, so the completion contains a shot of group `G`; a shot has one
+/// group, so the shots for distinct groups in `R` are distinct, and `|R|` is a
+/// floor. For atom `i`, its own `>= d_i` moving shots all use groups in `U_i`,
+/// while each `G` in `R \ U_i` needs a shot of its own group, which is not in
+/// `U_i`: those shots are disjoint from `i`'s, giving `d_i + |R \ U_i|`.
+///
+/// `U_i` must not be narrowed to shortest paths: a detour through a required
+/// group would then be counted twice. It must also be computed on a graph no
+/// smaller than the move generators allow, so only the static `blocked` set is
+/// carved — never the sites of atoms that are part of the solve.
+///
+/// `h` is also consistent (`h(n) <= 1 + h(n')` across a shot), which the
+/// closed-set frontier driver relies on to stay optimal.
+///
+/// # Cost
+///
+/// All the graph work happens in [`BusCutBound::new`], per target and per group:
+/// one reverse reachability pass over the lane graph with that group's lanes
+/// removed. `estimate` is table lookups and popcounts.
+pub struct BusCutBound {
+    /// `d_i`: the very table `h0` reads, so the two bounds agree on distances.
+    table: WeightedDistanceTable,
+    /// `(qubit, encoded target)`, as in [`WeightedDistanceBound`].
+    targets: Vec<(u32, u64)>,
+    blocked: HashSet<u64>,
+    /// `encoded location → row`, over the carved graph.
+    loc_index: HashMap<u64, usize>,
+    /// `encoded target → column`, unblocked targets only.
+    target_col: HashMap<u64, usize>,
+    n_loc: usize,
+    /// `u64` words per group mask.
+    words: usize,
+    /// `required[(col * n_loc + row) * words ..][..words]`: the groups required
+    /// for an atom at `row` heading for target `col`.
+    required: Vec<u64>,
+    /// `used[col * words ..][..words]`: `U` for target `col`.
+    used: Vec<u64>,
+}
+
+impl BusCutBound {
+    /// Build the per-solve tables. `blocked` is carved out exactly as
+    /// [`WeightedDistanceBound::new`] carves it.
+    pub fn new(
+        objective: &UniformCost,
+        targets: &[(u32, u64)],
+        index: &LaneIndex,
+        blocked: &HashSet<u64>,
+    ) -> Self {
+        let target_locs: Vec<u64> = targets.iter().map(|&(_, enc)| enc).collect();
+        let table = WeightedDistanceTable::new(&target_locs, index, blocked, objective);
+
+        // The carved lane graph again, this time remembering each lane's group.
+        let mut loc_index: HashMap<u64, usize> = HashMap::new();
+        let mut preds: Vec<Vec<(usize, usize)>> = Vec::new(); // dst → [(src, group)]
+        let mut edges: Vec<(usize, usize, usize)> = Vec::new(); // (src, dst, group)
+        let mut intern = |enc: u64, preds: &mut Vec<Vec<(usize, usize)>>| {
+            *loc_index.entry(enc).or_insert_with(|| {
+                preds.push(Vec::new());
+                preds.len() - 1
+            })
+        };
+        let mut n_groups = 0_usize;
+        for (mt, bus_id, zone_id, dir) in index.bus_groups() {
+            let group = n_groups;
+            n_groups += 1;
+            for &lane in index.lanes_for(mt, bus_id, zone_id, dir) {
+                let Some((src, dst)) = index.endpoints(&lane) else {
+                    continue;
+                };
+                let (src_enc, dst_enc) = (src.encode(), dst.encode());
+                if blocked.contains(&src_enc) || blocked.contains(&dst_enc) {
+                    continue;
+                }
+                let (s, d) = (intern(src_enc, &mut preds), intern(dst_enc, &mut preds));
+                preds[d].push((s, group));
+                edges.push((s, d, group));
+            }
+        }
+
+        let mut unique: Vec<u64> = target_locs
+            .iter()
+            .copied()
+            .filter(|t| !blocked.contains(t))
+            .collect();
+        unique.sort_unstable();
+        unique.dedup();
+        // An isolated target still needs a row, so that the atom already on it
+        // and the table's `distance(t, t)` agree on what a known location is.
+        for &t in &unique {
+            intern(t, &mut preds);
+        }
+
+        let n_loc = preds.len();
+        let words = n_groups.div_ceil(64).max(1);
+        let target_col: HashMap<u64, usize> =
+            unique.iter().enumerate().map(|(c, &t)| (t, c)).collect();
+        let mut required = vec![0_u64; unique.len() * n_loc * words];
+        let mut used = vec![0_u64; unique.len() * words];
+
+        for (col, &target) in unique.iter().enumerate() {
+            let t_idx = loc_index[&target];
+            let reach = reverse_reach(&preds, t_idx, None);
+
+            for &(s, d, group) in &edges {
+                if reach[s] && reach[d] {
+                    used[col * words + group / 64] |= 1 << (group % 64);
+                }
+            }
+            // Removing a group with no lane inside `reach` cannot cut anything
+            // off, so only the groups in `U` can be required.
+            for group in 0..n_groups {
+                if used[col * words + group / 64] & (1 << (group % 64)) == 0 {
+                    continue;
+                }
+                let without = reverse_reach(&preds, t_idx, Some(group));
+                for row in 0..n_loc {
+                    if reach[row] && !without[row] {
+                        required[(col * n_loc + row) * words + group / 64] |= 1 << (group % 64);
+                    }
+                }
+            }
+        }
+
+        Self {
+            table,
+            targets: targets.to_vec(),
+            blocked: blocked.clone(),
+            loc_index,
+            target_col,
+            n_loc,
+            words,
+            required,
+            used,
+        }
+    }
+
+    /// Borrow the distance table (diagnostics, instrumentation).
+    pub fn table(&self) -> &WeightedDistanceTable {
+        &self.table
+    }
+
+    /// Classify one targeted atom, with the same infeasibility and
+    /// blocked-source rules as [`WeightedDistanceBound::estimate`].
+    fn atom(&self, config: &Config, qid: u32, target_enc: u64) -> Atom {
+        let Some(loc) = config.location_of(qid) else {
+            return Atom::Infeasible;
+        };
+        let loc_enc = loc.encode();
+        if loc_enc == target_enc {
+            return Atom::Idle;
+        }
+        let Some(d) = self.table.distance(loc_enc, target_enc) else {
+            return if self.blocked.contains(&loc_enc) {
+                Atom::Idle
+            } else {
+                Atom::Infeasible
+            };
+        };
+        // The table answered, so both ends are in the carved graph we interned.
+        let row = self.loc_index[&loc_enc];
+        let col = self.target_col[&target_enc];
+        Atom::Moving { d, row, col }
+    }
+}
+
+/// Which locations reach `target_idx` on the reversed graph, optionally with one
+/// group's lanes removed.
+fn reverse_reach(
+    preds: &[Vec<(usize, usize)>],
+    target_idx: usize,
+    skip: Option<usize>,
+) -> Vec<bool> {
+    let mut seen = vec![false; preds.len()];
+    let mut queue = VecDeque::from([target_idx]);
+    seen[target_idx] = true;
+    while let Some(node) = queue.pop_front() {
+        for &(pred, group) in &preds[node] {
+            if !seen[pred] && skip != Some(group) {
+                seen[pred] = true;
+                queue.push_back(pred);
+            }
+        }
+    }
+    seen
+}
+
+impl CompletionBound for BusCutBound {
+    type Obj = UniformCost;
+
+    fn objective_id(&self) -> ObjectiveId {
+        self.table.objective_id()
+    }
+
+    fn estimate(&self, config: &Config) -> f64 {
+        let mut inline = [0_u64; INLINE_WORDS];
+        let mut spill: Vec<u64>;
+        let all: &mut [u64] = if self.words <= INLINE_WORDS {
+            &mut inline[..self.words]
+        } else {
+            spill = vec![0; self.words];
+            &mut spill
+        };
+
+        // R: every group some atom cannot do without.
+        for &(qid, target_enc) in &self.targets {
+            match self.atom(config, qid, target_enc) {
+                Atom::Infeasible => return f64::INFINITY,
+                Atom::Idle => {}
+                Atom::Moving { row, col, .. } => {
+                    let base = (col * self.n_loc + row) * self.words;
+                    for (w, slot) in all.iter_mut().enumerate() {
+                        *slot |= self.required[base + w];
+                    }
+                }
+            }
+        }
+
+        let mut worst = all.iter().map(|w| w.count_ones()).sum::<u32>() as f64;
+        for &(qid, target_enc) in &self.targets {
+            if let Atom::Moving { d, col, .. } = self.atom(config, qid, target_enc) {
+                let outside: u32 = (0..self.words)
+                    .map(|w| (all[w] & !self.used[col * self.words + w]).count_ones())
+                    .sum();
+                worst = worst.max(d + f64::from(outside));
+            }
         }
         worst
     }
