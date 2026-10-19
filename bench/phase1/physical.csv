@@ -1,0 +1,10 @@
+case_id,strategy_id,arch_spec_id,backend,generator_id,success,wall_time_ms,move_count_events,move_count_lanes,estimated_fidelity,nodes_explored,max_depth_reached,cuts_by_g,cuts_by_h,cuts_infeasible,cut_depth_sum,cut_depth_g_only_sum,max_optimality_gap,notes
+adder_4,rust_cascade_ids,builtin,rust,rust_solver,True,679.426947,38,50,0.6060197713,48,,0,26,0,92,133,0.500000,"IDS, then an A* refinement gated by the completion bound"
+adder_64,rust_cascade_ids,builtin,rust,rust_solver,True,22782.879004,1550,1668,0.0000000000,4810,,55,698,0,2640,3756,0.833333,"IDS, then an A* refinement gated by the completion bound"
+bv_70,rust_cascade_ids,builtin,rust,rust_solver,True,714.038692,198,198,0.0000000000,135,,4,32,0,32,95,0.000000,"IDS, then an A* refinement gated by the completion bound"
+ghz_4,rust_cascade_ids,builtin,rust,rust_solver,True,370.967988,12,14,0.8706036048,9,,0,3,0,5,9,0.333333,"IDS, then an A* refinement gated by the completion bound"
+ghz_6,rust_cascade_ids,builtin,rust,rust_solver,True,503.842936,20,26,0.7448158675,18,,0,7,0,19,28,0.333333,"IDS, then an A* refinement gated by the completion bound"
+qpe_9,rust_cascade_ids,builtin,rust,rust_solver,True,2290.949481,220,224,0.0118758786,152,,0,42,0,42,110,0.000000,"IDS, then an A* refinement gated by the completion bound"
+steane_logical_5,rust_cascade_ids,builtin,rust,rust_solver,True,91.885804,18,26,0.7893012402,12,,0,3,0,3,9,0.000000,"IDS, then an A* refinement gated by the completion bound"
+steane_physical_35,rust_cascade_ids,builtin,rust,rust_solver,False,,,,,,,,,,,,,"IDS, then an A* refinement gated by the completion bound; error=Compilation did not fully lower to Move IR; place.CZ statements remain."
+trotter_rand_35,rust_cascade_ids,builtin,rust,rust_solver,True,4053.447125,1258,1528,0.0000000000,11165,,0,156,0,924,1180,0.840000,"IDS, then an A* refinement gated by the completion bound"

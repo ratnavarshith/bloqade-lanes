@@ -1,0 +1,2 @@
+case_id,strategy_id,arch_spec_id,backend,generator_id,success,wall_time_ms,move_count_events,move_count_lanes,estimated_fidelity,nodes_explored,max_depth_reached,cuts_by_g,cuts_by_h,cuts_infeasible,cut_depth_sum,cut_depth_g_only_sum,max_optimality_gap,notes
+ghz_4,rust_cascade_ids,two_zone_grid,rust,rust_solver,False,,,,,,,,,,,,,"IDS, then an A* refinement gated by the completion bound; error=PhysicalLayoutHeuristicGraphPartitionCenterOut expects exactly one entangling zone, got 2."

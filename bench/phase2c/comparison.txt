@@ -1,0 +1,13 @@
+non-deterministic fields across runs: []
+case                    cost h0/bc    events h0/bc     nodes h0/bc     cuts_by_h h0/bc     rootgap h0/bc    maxgap h0/bc     certs h0/bc       wall ms h0/bc (median of 3)
+adder_4                  19/19          38/38           48/36             26/20           15.8%/15.8   %   50.0%/50.0%       6/7/6/7             461/487      
+adder_64                775/775       1550/1550       4810/4530          698/917          33.0%/31.2   %   83.3%/77.8%   165/257/165/257       21459/20988    
+bv_70                    99/99         198/198         135/135            32/32            0.0%/0.0    %    0.0%/0.0%      36/36/36/36           715/626      
+ghz_4                     6/6           12/12            9/8               3/2            16.7%/16.7   %   33.3%/33.3%       1/2/1/2             331/303      
+ghz_6                    10/10          20/20           18/13              7/3            20.0%/20.0   %   33.3%/33.3%       1/3/1/3             494/528      
+qpe_9                   110/110        220/220         152/152            42/42            0.0%/0.0    %    0.0%/0.0%      42/42/42/42          2072/2042     
+steane_logical_5          9/9           18/18           12/12              3/3             0.0%/0.0    %    0.0%/0.0%        3/3/3/3              63/64       
+steane_physical_35   h0 success=False bc success=False  (h0 notes: ...ompilation did not fully lower to Move IR; place.CZ statements remain.)
+trotter_rand_35         629/629       1258/1258      11165/10879         156/560          69.5%/54.7   %   84.0%/68.2%     10/56/10/56          3839/3746     
+TOTAL (successful cases): {'cost_h0': 1657.0, 'cost_bc': 1657.0, 'events_h0': 3314, 'events_bc': 3314, 'nodes_h0': 16349, 'nodes_bc': 15765, 'cuts_h_h0': 967, 'cuts_h_bc': 1579, 'wall_h0': 29431.834931999674, 'wall_bc': 28783.407324999644}
+wall samples: {'adder_64|ade_ids': [20637, 21767, 21459], 'adder_64|bus_cut': [21641, 19186, 20988], 'trotter_rand_35|ade_ids': [4058, 3839, 3820], 'trotter_rand_35|bus_cut': [3746, 3546, 3867]}
