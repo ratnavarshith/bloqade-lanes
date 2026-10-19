@@ -1117,21 +1117,16 @@ mod tests {
         }
     }
 
-    /// Tier 2: hand-picked instances, growing from one atom to three, each
-    /// verified against the brute-force reference.
-    #[test]
-    fn h0_never_exceeds_brute_force_optimum_on_tiny_instances() {
-        let index = make_index();
+    /// `(initial placement, target placement, blocked locations)`.
+    type Instance = (
+        Vec<(u32, LocationAddr)>,
+        Vec<(u32, LocationAddr)>,
+        Vec<LocationAddr>,
+    );
 
-        // (initial, targets, blocked) ordered by atom count.
-        /// `(initial placement, target placement, blocked locations)`.
-        type Instance = (
-            Vec<(u32, LocationAddr)>,
-            Vec<(u32, LocationAddr)>,
-            Vec<LocationAddr>,
-        );
-
-        let instances: Vec<Instance> = vec![
+    /// The hand-picked instances on the example arch, ordered by atom count.
+    fn tiny_instances() -> Vec<Instance> {
+        vec![
             // 1 atom
             (vec![(0, loc(0, 0))], vec![(0, loc(0, 5))], vec![]),
             (vec![(0, loc(0, 0))], vec![(0, loc(1, 0))], vec![]),
@@ -1155,7 +1150,15 @@ mod tests {
                 vec![(0, loc(0, 5)), (1, loc(0, 6)), (2, loc(0, 7))],
                 vec![],
             ),
-        ];
+        ]
+    }
+
+    /// Tier 2: hand-picked instances, growing from one atom to three, each
+    /// verified against the brute-force reference.
+    #[test]
+    fn h0_never_exceeds_brute_force_optimum_on_tiny_instances() {
+        let index = make_index();
+        let instances = tiny_instances();
 
         let mut verified = 0_usize;
         for (initial, target_pairs, blocked_locs) in instances {
@@ -1281,5 +1284,564 @@ mod tests {
             "only {verified} randomized instances were verified \
              ({skipped_budget} skipped on budget); the test is not exercising the bound"
         );
+    }
+
+    // ── BusCutBound ──
+
+    /// One word of five sites with two independent site buses: a chain
+    /// `0→1→2` (bus 0) and a lone hop `3→4` (bus 1). The components share no
+    /// lane and no group, so atoms on them can never share a shot.
+    fn two_component_arch_json() -> &'static str {
+        r#"{
+            "version": "2.0",
+            "words": [
+                { "sites": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] }
+            ],
+            "zones": [
+                {
+                    "grid": { "x_start": 0.0, "y_start": 0.0, "x_spacing": [2.0, 2.0, 2.0, 2.0], "y_spacing": [] },
+                    "site_buses": [
+                        { "src": [0, 1], "dst": [1, 2] },
+                        { "src": [3], "dst": [4] }
+                    ],
+                    "word_buses": [],
+                    "words_with_site_buses": [0],
+                    "sites_with_word_buses": [],
+                    "entangling_pairs": []
+                }
+            ],
+            "zone_buses": [],
+            "modes": [
+                { "name": "default", "zones": [0], "bitstring_order": [] }
+            ]
+        }"#
+    }
+
+    fn index_for(json: &str) -> LaneIndex {
+        let spec: ArchSpec = serde_json::from_str(json).expect("fixture json parses");
+        let validation = spec.validate();
+        assert!(
+            validation.is_ok(),
+            "fixture must be a legal spec: {validation:?}"
+        );
+        LaneIndex::new(spec)
+    }
+
+    fn bus_cut_at(
+        initial: &[(u32, LocationAddr)],
+        targets: &[(u32, u64)],
+        blocked: &HashSet<u64>,
+        index: &LaneIndex,
+    ) -> f64 {
+        BusCutBound::new(&UniformCost, targets, index, blocked)
+            .estimate(&Config::new(initial.iter().copied()).unwrap())
+    }
+
+    /// `(initial, targets, blocked)` in the shapes the bounds and the
+    /// brute-force reference take.
+    type BoundInstance = (Vec<(u32, LocationAddr)>, Vec<(u32, u64)>, HashSet<u64>);
+
+    fn encode_instance((initial, targets, blocked): Instance) -> BoundInstance {
+        (
+            initial,
+            targets.iter().map(|&(q, l)| (q, l.encode())).collect(),
+            blocked.iter().map(|l| l.encode()).collect(),
+        )
+    }
+
+    /// Every location a lane of `index` touches, in encoded order.
+    fn arch_locations(index: &LaneIndex) -> Vec<LocationAddr> {
+        let mut by_enc = std::collections::BTreeMap::new();
+        for (mt, bus_id, zone_id, dir) in index.bus_groups() {
+            for &lane in index.lanes_for(mt, bus_id, zone_id, dir) {
+                if let Some((src, dst)) = index.endpoints(&lane) {
+                    by_enc.insert(src.encode(), src);
+                    by_enc.insert(dst.encode(), dst);
+                }
+            }
+        }
+        by_enc.into_values().collect()
+    }
+
+    /// Small randomized instances on any architecture, seeded so a failure
+    /// reproduces: one to three atoms, each with a distinct target drawn from
+    /// its reachable set. With `block_one`, one further location is blocked.
+    ///
+    /// On the example arch with `block_one == false` and seed `0xB01E_5EED` this
+    /// draws exactly the instances of
+    /// `h0_never_exceeds_brute_force_optimum_on_randomized_instances`.
+    fn random_instances(
+        index: &LaneIndex,
+        seed: u64,
+        per_size: usize,
+        block_one: bool,
+    ) -> Vec<BoundInstance> {
+        use crate::primitives::distance::DistanceTable;
+        use rand::SeedableRng;
+        use rand::rngs::SmallRng;
+        use rand::seq::{IndexedRandom, SliceRandom};
+
+        let sites = arch_locations(index);
+        let all_encs: Vec<u64> = sites.iter().map(|l| l.encode()).collect();
+        let reach = DistanceTable::new(&all_encs, index);
+        let mut rng = SmallRng::seed_from_u64(seed);
+        let mut out = Vec::new();
+
+        for n_atoms in 1..=3usize.min(sites.len()) {
+            for _ in 0..per_size {
+                let mut picked = sites.clone();
+                picked.shuffle(&mut rng);
+                let starts: Vec<LocationAddr> = picked[..n_atoms].to_vec();
+
+                let mut targets_used: Vec<LocationAddr> = Vec::new();
+                let mut ok = true;
+                for &start in &starts {
+                    let options: Vec<LocationAddr> = sites
+                        .iter()
+                        .copied()
+                        .filter(|&to| {
+                            to != start && reach.distance(start.encode(), to.encode()).is_some()
+                        })
+                        .filter(|t| !targets_used.contains(t))
+                        .collect();
+                    match options.choose(&mut rng) {
+                        Some(&t) => targets_used.push(t),
+                        None => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if !ok {
+                    continue;
+                }
+
+                let mut blocked = HashSet::new();
+                if block_one {
+                    let free: Vec<LocationAddr> = sites
+                        .iter()
+                        .copied()
+                        .filter(|l| !starts.contains(l) && !targets_used.contains(l))
+                        .collect();
+                    if let Some(&b) = free.choose(&mut rng) {
+                        blocked.insert(b.encode());
+                    }
+                }
+                out.push((
+                    starts
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &l)| (i as u32, l))
+                        .collect(),
+                    targets_used
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &l)| (i as u32, l.encode()))
+                        .collect(),
+                    blocked,
+                ));
+            }
+        }
+        out
+    }
+
+    /// Every architecture the exhaustive generator can enumerate, as
+    /// `(name, index, instances)`. The example arch carries the same instances
+    /// as the h0 tests; the others get seeded random ones, half of them with a
+    /// blocked site.
+    fn bus_cut_fixtures() -> Vec<(&'static str, LaneIndex, Vec<BoundInstance>)> {
+        use crate::test_utils::{
+            asymmetric_duration_arch_json, chain_arch_json, chain_with_siding_arch_json,
+            storage_gate_arch_json, two_zone_aligned_site_bus_arch_json, two_zone_bus_arch_json,
+        };
+
+        let example = make_index();
+        let mut example_instances: Vec<BoundInstance> =
+            tiny_instances().into_iter().map(encode_instance).collect();
+        example_instances.extend(random_instances(&example, 0xB01E_5EED, 8, false));
+        example_instances.extend(random_instances(&example, 0xB10C_CED5, 4, true));
+
+        let mut fixtures = vec![("example", example, example_instances)];
+        let others: [(&'static str, LaneIndex); 7] = [
+            ("two-component", index_for(two_component_arch_json())),
+            ("chain", index_for(&chain_arch_json())),
+            (
+                "chain with siding",
+                index_for(chain_with_siding_arch_json()),
+            ),
+            (
+                "two-zone aligned site buses",
+                index_for(two_zone_aligned_site_bus_arch_json()),
+            ),
+            ("two-zone bus", index_for(two_zone_bus_arch_json())),
+            ("storage and gate", index_for(storage_gate_arch_json())),
+            (
+                "asymmetric duration",
+                index_for(&asymmetric_duration_arch_json()),
+            ),
+        ];
+        for (i, (name, index)) in others.into_iter().enumerate() {
+            let seed = 0xB05C_0000 + i as u64;
+            let mut instances = random_instances(&index, seed, 6, false);
+            instances.extend(random_instances(&index, seed ^ 0xFF, 6, true));
+            fixtures.push((name, index, instances));
+        }
+        fixtures
+    }
+
+    /// Walk the exhaustive generator's graph breadth-first from `initial`, over
+    /// at most `node_cap` expanded configurations, and assert
+    /// `h(parent) <= 1 + h(child)` on every edge. Returns the edges checked.
+    fn assert_consistent_on_edges(
+        initial: &[(u32, LocationAddr)],
+        targets: &[(u32, u64)],
+        blocked: &HashSet<u64>,
+        index: &LaneIndex,
+        bound: &impl CompletionBound,
+        node_cap: usize,
+    ) -> usize {
+        use crate::generators::exhaustive::{ExhaustiveGenerator, SeedPolicy};
+        use crate::primitives::context::{SearchContext, SearchState};
+        use crate::primitives::distance::DistanceTable;
+        use crate::primitives::graph::NodeId;
+        use crate::traits::MoveGenerator;
+
+        let target_locs: Vec<u64> = targets.iter().map(|&(_, l)| l).collect();
+        let dist_table = DistanceTable::new(&target_locs, index);
+        let ctx = SearchContext {
+            index,
+            dist_table: &dist_table,
+            blocked,
+            targets,
+            cz_pairs: None,
+        };
+        let generator = ExhaustiveGenerator::for_solve(&ctx, SeedPolicy::Any, None).unwrap();
+
+        let root = Config::new(initial.iter().copied()).unwrap();
+        let mut seen: HashSet<Config> = HashSet::from([root.clone()]);
+        let mut queue = VecDeque::from([root]);
+        let mut state = SearchState::default();
+        let mut candidates = Vec::new();
+        let (mut expanded, mut checked) = (0_usize, 0_usize);
+
+        while let Some(config) = queue.pop_front() {
+            if expanded >= node_cap {
+                break;
+            }
+            expanded += 1;
+            let h = bound.estimate(&config);
+            candidates.clear();
+            generator.generate(&config, NodeId(0), &ctx, &mut state, &mut candidates);
+            for candidate in candidates.drain(..) {
+                let h_child = bound.estimate(&candidate.new_config);
+                assert!(
+                    h <= 1.0 + h_child,
+                    "h is inconsistent across one shot: h(parent) = {h}, h(child) = {h_child}; \
+                     parent {config:?} -> child {:?}",
+                    candidate.new_config
+                );
+                checked += 1;
+                if seen.insert(candidate.new_config.clone()) {
+                    queue.push_back(candidate.new_config);
+                }
+            }
+        }
+        checked
+    }
+
+    // Compile-time: the bound must stay a real (non-trivial) one, and is only
+    // ever paired with the unit-cost objective.
+    const _: () = assert!(!<BusCutBound as CompletionBound>::TRIVIAL);
+    const _: fn() = || {
+        fn same_objective<B: CompletionBound<Obj = UniformCost>>() {}
+        same_objective::<BusCutBound>();
+    };
+
+    #[test]
+    fn bus_cut_pairs_with_the_uniform_cost_objective() {
+        let index = make_index();
+        let bound = BusCutBound::new(&UniformCost, &[], &index, &HashSet::new());
+        assert_eq!(bound.objective_id(), UniformCost.id());
+    }
+
+    /// The premises the bound counts shots on: a shot costs 1 whatever it
+    /// carries and every lane weighs 1 (C1-C3), so `|R|` distinct shots cost
+    /// `|R|`. `assert_objective_contract` covers C2-C5 on each architecture.
+    #[test]
+    fn bus_cut_premises_hold_under_uniform_cost() {
+        for index in [make_index(), index_for(two_component_arch_json())] {
+            assert_objective_contract(&UniformCost, &index);
+            assert_eq!(UniformCost.min_shot_cost(), 1.0);
+            let config = Config::new([]).unwrap();
+            for (mt, bus_id, zone_id, dir) in index.bus_groups() {
+                let lanes = index.lanes_for(mt, bus_id, zone_id, dir);
+                for &lane in lanes {
+                    assert_eq!(UniformCost.lane_weight(lane), 1.0);
+                }
+                let shot = MoveSet::new(lanes.iter().copied());
+                assert_eq!(UniformCost.edge_cost(&shot, &config, &config), 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn bus_cut_is_zero_when_every_atom_is_resolved() {
+        let index = make_index();
+        let targets = [(0u32, loc(0, 5).encode()), (1u32, loc(1, 5).encode())];
+        let bound = BusCutBound::new(&UniformCost, &targets, &index, &HashSet::new());
+        let config = Config::new([(0, loc(0, 5)), (1, loc(1, 5))]).unwrap();
+        assert_eq!(bound.estimate(&config), 0.0);
+    }
+
+    #[test]
+    fn bus_cut_is_infinite_exactly_when_h0_is() {
+        let index = make_index();
+        let blocked = HashSet::new();
+        let config = Config::new([(0, loc(0, 0))]).unwrap();
+
+        let unreachable = [(0u32, loc(99, 99).encode())];
+        let missing = [(7u32, loc(0, 5).encode())];
+        for targets in [&unreachable[..], &missing[..]] {
+            let bound = BusCutBound::new(&UniformCost, targets, &index, &blocked);
+            assert_eq!(bound.estimate(&config), f64::INFINITY);
+        }
+
+        // A blocked target is unreachable for an unblocked atom, as for h0.
+        let target = loc(1, 0).encode();
+        let targets = [(0u32, target)];
+        let blocked_target: HashSet<u64> = [target].into_iter().collect();
+        assert_eq!(
+            BusCutBound::new(&UniformCost, &targets, &index, &blocked_target).estimate(&config),
+            f64::INFINITY
+        );
+    }
+
+    /// An atom parked on a blocked site certifies no floor, exactly as in h0.
+    #[test]
+    fn bus_cut_ignores_an_atom_parked_on_a_blocked_site() {
+        let index = make_index();
+        let targets = [(0u32, loc(1, 0).encode())];
+        let blocked: HashSet<u64> = [loc(0, 0).encode()].into_iter().collect();
+        let config = Config::new([(0, loc(0, 0))]).unwrap();
+        let h = BusCutBound::new(&UniformCost, &targets, &index, &blocked).estimate(&config);
+        assert_eq!(h, 0.0);
+        assert_eq!(
+            h,
+            bound_for(&targets, &index, &blocked).estimate(&config),
+            "must agree with h0"
+        );
+    }
+
+    /// Sites of atoms that are part of the solve are never carved: an atom
+    /// already on its target, sitting mid-chain, must not sever another
+    /// atom's only route.
+    #[test]
+    fn bus_cut_does_not_carve_the_sites_of_atoms_in_the_solve() {
+        let index = index_for(two_component_arch_json());
+        let targets = [(0u32, loc(0, 2).encode()), (1u32, loc(0, 1).encode())];
+        let config = Config::new([(0, loc(0, 0)), (1, loc(0, 1))]).unwrap();
+        let h = BusCutBound::new(&UniformCost, &targets, &index, &HashSet::new()).estimate(&config);
+        assert_eq!(h, 2.0);
+    }
+
+    /// `|R| > h0`: the atoms need different buses, so no single shot serves
+    /// both, however short each atom's own trip is.
+    #[test]
+    fn bus_cut_exceeds_h0_when_atoms_depend_on_different_buses() {
+        let index = index_for(two_component_arch_json());
+        let blocked = HashSet::new();
+        let initial = [(0u32, loc(0, 0)), (1, loc(0, 3))];
+        let targets = [(0u32, loc(0, 1).encode()), (1, loc(0, 4).encode())];
+
+        let h0 = h0_at(&initial, &targets, &blocked, &index);
+        let h = bus_cut_at(&initial, &targets, &blocked, &index);
+        assert_eq!(h0, 1.0);
+        assert_eq!(h, 2.0, "each hop is on its own bus, so two shots at least");
+        assert_eq!(
+            brute_force_optimum(&initial, &targets, &blocked, &index, 20_000),
+            Some(2.0)
+        );
+    }
+
+    /// The same effect on the example arch, across three groups: one atom per
+    /// leg of site-bus-forward, word-bus-forward, site-bus-backward.
+    #[test]
+    fn bus_cut_counts_three_required_groups_on_the_example_arch() {
+        let index = make_index();
+        let blocked = HashSet::new();
+        let initial = [(0u32, loc(0, 0)), (1, loc(0, 5)), (2, loc(1, 5))];
+        let targets = [
+            (0u32, loc(0, 5).encode()),
+            (1, loc(1, 5).encode()),
+            (2, loc(1, 0).encode()),
+        ];
+
+        let h0 = h0_at(&initial, &targets, &blocked, &index);
+        let h = bus_cut_at(&initial, &targets, &blocked, &index);
+        assert_eq!(h0, 1.0);
+        assert_eq!(h, 3.0);
+        assert_eq!(
+            brute_force_optimum(&initial, &targets, &blocked, &index, 60_000),
+            Some(3.0)
+        );
+    }
+
+    /// The `d_i + |R \ U_i|` term: the long trip is on bus 0, and bus 1's
+    /// required group lies outside everything that atom can reach.
+    #[test]
+    fn bus_cut_adds_groups_outside_the_atoms_reach_to_its_distance() {
+        let index = index_for(two_component_arch_json());
+        let blocked = HashSet::new();
+        let initial = [(0u32, loc(0, 0)), (1, loc(0, 3))];
+        let targets = [(0u32, loc(0, 2).encode()), (1, loc(0, 4).encode())];
+
+        let h0 = h0_at(&initial, &targets, &blocked, &index);
+        let h = bus_cut_at(&initial, &targets, &blocked, &index);
+        assert_eq!(h0, 2.0);
+        // |R| = 2 (bus 0 forward, bus 1 forward), but atom 0 spends 2 shots on
+        // bus 0 alone and bus 1's shot cannot be one of them.
+        assert_eq!(h, 3.0);
+        assert_eq!(
+            brute_force_optimum(&initial, &targets, &blocked, &index, 20_000),
+            Some(3.0)
+        );
+    }
+
+    /// For a lone atom `R` is contained in the groups of any shortest path, so
+    /// `|R| <= d` and the bound must collapse to `h0`, which is exact.
+    #[test]
+    fn bus_cut_is_exact_for_a_single_atom() {
+        let blocked = HashSet::new();
+        let example = make_index();
+        let two_component = index_for(two_component_arch_json());
+        let cases = [
+            (&example, loc(0, 0), loc(0, 5)),
+            (&example, loc(0, 0), loc(1, 5)),
+            (&example, loc(0, 0), loc(1, 0)),
+            (&example, loc(0, 5), loc(1, 5)),
+            (&two_component, loc(0, 0), loc(0, 1)),
+            (&two_component, loc(0, 0), loc(0, 2)),
+            (&two_component, loc(0, 3), loc(0, 4)),
+        ];
+        for (index, start, target) in cases {
+            let initial = [(0u32, start)];
+            let targets = [(0u32, target.encode())];
+            let h = bus_cut_at(&initial, &targets, &blocked, index);
+            let optimum = brute_force_optimum(&initial, &targets, &blocked, index, 20_000)
+                .unwrap_or_else(|| panic!("{start:?} -> {target:?} should be solvable"));
+            assert_eq!(
+                h, optimum,
+                "bus-cut must equal the optimum for a lone atom: {start:?} -> {target:?}"
+            );
+            assert_eq!(h, h0_at(&initial, &targets, &blocked, index));
+        }
+    }
+
+    /// Sandwiched between h0 and the brute-force optimum on every fixture.
+    /// As in the h0 tests, the reference is an upper bound on the optimum, so
+    /// this is a necessary check, not a proof.
+    #[test]
+    fn bus_cut_sits_between_h0_and_the_brute_force_optimum_on_every_fixture() {
+        let (mut verified, mut strictly_above_h0) = (0_usize, 0_usize);
+        for (name, index, instances) in bus_cut_fixtures() {
+            let mut verified_here = 0_usize;
+            for (initial, targets, blocked) in instances {
+                let h0 = h0_at(&initial, &targets, &blocked, &index);
+                let h = bus_cut_at(&initial, &targets, &blocked, &index);
+                assert!(
+                    h >= h0,
+                    "[{name}] bus-cut {h} fell below h0 {h0} for {initial:?} -> {targets:?} \
+                     (blocked {blocked:?})"
+                );
+                let Some(optimum) =
+                    brute_force_optimum(&initial, &targets, &blocked, &index, 30_000)
+                else {
+                    continue; // budget exhausted: no reference to compare against
+                };
+                assert!(
+                    h <= optimum,
+                    "[{name}] bus-cut {h} exceeded the brute-force optimum {optimum} for \
+                     {initial:?} -> {targets:?} (blocked {blocked:?})"
+                );
+                verified_here += 1;
+                if h > h0 {
+                    strictly_above_h0 += 1;
+                }
+            }
+            assert!(
+                verified_here >= 3,
+                "[{name}] only {verified_here} instances were verified; the fixture is not \
+                 exercising the bound"
+            );
+            verified += verified_here;
+        }
+        assert!(
+            strictly_above_h0 >= 1,
+            "bus-cut never beat h0 on {verified} verified instances; the strict-gain \
+             cases are not being reached"
+        );
+    }
+
+    /// `h(n) <= 1 + h(n')` on every edge of the exhaustive graph.
+    #[test]
+    fn bus_cut_is_consistent_on_every_exhaustive_edge() {
+        let mut checked = 0_usize;
+        for (_, index, instances) in bus_cut_fixtures() {
+            for (initial, targets, blocked) in instances {
+                let bound = BusCutBound::new(&UniformCost, &targets, &index, &blocked);
+                checked +=
+                    assert_consistent_on_edges(&initial, &targets, &blocked, &index, &bound, 120);
+            }
+        }
+        assert!(
+            checked >= 1_000,
+            "only {checked} edges were checked; the consistency test is not exercising the bound"
+        );
+    }
+
+    /// 130 independent one-hop buses are 260 groups: five `u64` mask words,
+    /// one more than the inline buffer holds, so this takes the heap path and
+    /// every word index beyond the first. One atom per bus needs one shot per
+    /// bus, because no two buses share a group.
+    #[test]
+    fn bus_cut_counts_more_groups_than_one_mask_word_and_the_inline_buffer() {
+        let n = 130_u32;
+        let sites: Vec<String> = (0..2 * n).map(|i| format!("[{i}, 0]")).collect();
+        let spacing = vec!["1.0"; (2 * n - 1) as usize].join(", ");
+        let buses: Vec<String> = (0..n)
+            .map(|k| format!(r#"{{ "src": [{}], "dst": [{}] }}"#, 2 * k, 2 * k + 1))
+            .collect();
+        let json = format!(
+            r#"{{
+                "version": "2.0",
+                "words": [ {{ "sites": [{sites}] }} ],
+                "zones": [
+                    {{
+                        "grid": {{ "x_start": 0.0, "y_start": 0.0, "x_spacing": [{spacing}], "y_spacing": [] }},
+                        "site_buses": [{buses}],
+                        "word_buses": [],
+                        "words_with_site_buses": [0],
+                        "sites_with_word_buses": [],
+                        "entangling_pairs": []
+                    }}
+                ],
+                "zone_buses": [],
+                "modes": [ {{ "name": "default", "zones": [0], "bitstring_order": [] }} ]
+            }}"#,
+            sites = sites.join(", "),
+            buses = buses.join(", "),
+        );
+        let index = index_for(&json);
+
+        let initial: Vec<(u32, LocationAddr)> = (0..n).map(|k| (k, loc(0, 2 * k))).collect();
+        let targets: Vec<(u32, u64)> = (0..n).map(|k| (k, loc(0, 2 * k + 1).encode())).collect();
+        let blocked = HashSet::new();
+
+        let bound = BusCutBound::new(&UniformCost, &targets, &index, &blocked);
+        assert_eq!(bound.words, 5);
+        assert!(bound.words > INLINE_WORDS);
+        let config = Config::new(initial.iter().copied()).unwrap();
+        assert_eq!(bound.estimate(&config), f64::from(n));
+        assert_eq!(h0_at(&initial, &targets, &blocked, &index), 1.0);
     }
 }
