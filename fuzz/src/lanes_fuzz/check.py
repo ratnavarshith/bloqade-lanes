@@ -104,12 +104,16 @@ def rust_validate(move_mt: ir.Method) -> None:
 
 
 def check_kernel(
-    spec: KernelSpec, strategy_name: str, plant: PlantHook | None = None
+    spec: KernelSpec,
+    strategy_name: str,
+    plant: PlantHook | None = None,
+    plant_move: PlantHook | None = None,
 ) -> Outcome:
     """Run all checks for ``spec`` under ``strategy_name``.
 
-    ``plant`` (tests only) may rewrite the lifted kernel before the equivalence
-    check, to prove that the check notices a wrong gate.
+    Tests only: ``plant_move`` may corrupt the move IR before the validator runs,
+    and ``plant`` may rewrite the lifted squin kernel before the equivalence
+    check, to prove that those checks notice a bug.
     """
     start = time.perf_counter()
 
@@ -127,6 +131,9 @@ def check_kernel(
         return done("failure", f"compile: {signature(exc)}", str(exc))
     except Exception as exc:  # noqa: BLE001 - every other exception is a finding
         return done("failure", f"compile: {signature(exc)}", repr(exc))
+
+    if plant_move is not None:
+        move_mt = plant_move(move_mt)
 
     left = sum(isinstance(s, place.CZ) for s in move_mt.callable_region.walk())
     if left:
