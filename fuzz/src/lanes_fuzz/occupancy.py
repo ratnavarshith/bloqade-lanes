@@ -15,7 +15,8 @@ Violations (``OccupancyAnalysis.violations``), per ``move.Move`` statement:
 * ``inconsistent-lanes``: lanes of one move set differ in zone, bus, move type or
   direction;
 * ``invalid-lane``: a lane that is not a lane of the architecture;
-* ``empty-source``: a lane whose source site is empty;
+* ``empty-source``: lanes of a move set whose source site is empty (reported once
+  per set, with how many of its lanes);
 * ``collision``: a lane lands on an occupied site that no lane of the same set
   vacates, or two lanes land on one site (``Fill`` onto an occupied site too).
 
@@ -221,12 +222,16 @@ class MoveMethods(interp.MethodTable):
 
         sites = dict(state.sites)
         movers = []  # (src, dst, atom id or UNKNOWN)
+        empty = [src for src, _ in hops if state.at(src) is None]
         for src, dst in hops:
-            atom = state.at(src)
-            if atom is None:
-                interp_.report("empty-source", f"move from empty {src}")
-            else:
-                movers.append((src, dst, atom))
+            if state.at(src) is not None:
+                movers.append((src, dst, state.at(src)))
+        if empty:
+            interp_.report(
+                "empty-source",
+                f"{len(empty)} of {len(hops)} lanes start from empty sites"
+                f" (first: {empty[0]})",
+            )
 
         vacated = {src for src, _, _ in movers}
         for src in vacated:

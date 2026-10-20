@@ -23,6 +23,7 @@ import argparse
 import json
 import multiprocessing
 import random
+import re
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -66,8 +67,13 @@ def draw_specs(count: int, seed: int) -> list[KernelSpec]:
 
 def judge(move_mt: ir.Method) -> dict:
     arch = physical_arch()
+    sets = []  # (empty lanes, lanes) of every move set with an empty source
     try:
-        analysis = sorted({v.kind for v in analyze(move_mt, arch)})
+        found = analyze(move_mt, arch)
+        analysis = sorted({v.kind for v in found})
+        for v in found:
+            if v.kind == "empty-source":
+                sets.append(tuple(map(int, re.findall(r"\d+", v.detail)[:2])))
     except Exception as exc:  # noqa: BLE001 - a crash is a bug in the analysis
         analysis = [f"CRASH {signature(exc)}"]
     try:
@@ -75,7 +81,7 @@ def judge(move_mt: ir.Method) -> dict:
         validator = ""
     except Exception as exc:  # noqa: BLE001
         validator = signature(exc)
-    return {"analysis": analysis, "validator": validator}
+    return {"analysis": analysis, "validator": validator, "empty_sets": sets}
 
 
 def verdict(record: dict) -> str:
@@ -235,8 +241,23 @@ def summarize(runs: list[dict]) -> dict:
             key = (v, tuple(r["analysis"]), r["validator"], r["source"])
             b = buckets.setdefault(key, {"count": 0, "example": r})
             b["count"] += 1
+    crosstab = Counter(
+        (verdict(r), r["source"], tuple(r["analysis"]), r["validator"])
+        for r in records
+        if verdict(r) != "both accept"
+    )
+    empty_sets = Counter(
+        ("all lanes empty" if e == n else "some lanes empty", verdict(r))
+        for r in records
+        for e, n in r["empty_sets"]
+    )
     return {
         "table": {s: {v: c.get(v, 0) for v in VERDICTS} for s, c in table.items()},
+        "crosstab": [
+            {"verdict": v, "source": s, "analysis": list(a), "validator": val, "n": n}
+            for (v, s, a, val), n in sorted(crosstab.items(), key=lambda kv: -kv[1])
+        ],
+        "empty_source_sets": {f"{k[0]} / {k[1]}": n for k, n in sorted(empty_sets.items())},
         "total": {v: sum(c.get(v, 0) for c in table.values()) for v in VERDICTS},
         "no_output": {r["strategy"]: r["no_output"] for r in runs},
         "disagreements": [

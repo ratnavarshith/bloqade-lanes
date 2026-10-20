@@ -1,0 +1,379 @@
+{
+ "examples": 200,
+ "table": {
+  "compiled": {
+   "both accept": 2792,
+   "both reject": 0,
+   "only analysis rejects": 4,
+   "only validator rejects": 0
+  },
+  "drop": {
+   "both accept": 12,
+   "both reject": 51,
+   "only analysis rejects": 21,
+   "only validator rejects": 0
+  },
+  "duplicate": {
+   "both accept": 0,
+   "both reject": 84,
+   "only analysis rejects": 0,
+   "only validator rejects": 0
+  },
+  "retarget": {
+   "both accept": 0,
+   "both reject": 73,
+   "only analysis rejects": 11,
+   "only validator rejects": 0
+  },
+  "swap": {
+   "both accept": 4,
+   "both reject": 45,
+   "only analysis rejects": 35,
+   "only validator rejects": 0
+  }
+ },
+ "crosstab": [
+  {
+   "verdict": "both reject",
+   "source": "duplicate",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 84
+  },
+  {
+   "verdict": "both reject",
+   "source": "drop",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 39
+  },
+  {
+   "verdict": "only analysis rejects",
+   "source": "swap",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "n": 35
+  },
+  {
+   "verdict": "both reject",
+   "source": "swap",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 34
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 27
+  },
+  {
+   "verdict": "only analysis rejects",
+   "source": "drop",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "n": 21
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "empty-source",
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>,): [InvalidLaneAddressError('invalid lane: word_id ",
+   "n": 14
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "collision",
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 12
+  },
+  {
+   "verdict": "both reject",
+   "source": "swap",
+   "analysis": [
+    "collision",
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 11
+  },
+  {
+   "verdict": "only analysis rejects",
+   "source": "retarget",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "n": 11
+  },
+  {
+   "verdict": "both reject",
+   "source": "drop",
+   "analysis": [
+    "collision",
+    "empty-source"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 10
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "empty-source",
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>,): [InvalidLaneAddressError('invalid lane: site_id ",
+   "n": 9
+  },
+  {
+   "verdict": "only analysis rejects",
+   "source": "compiled",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "n": 4
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>,): [InvalidLaneAddressError('invalid lane: word_id ",
+   "n": 3
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "collision",
+    "empty-source",
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>,): [InvalidLaneAddressError('invalid lane: word_id ",
+   "n": 2
+  },
+  {
+   "verdict": "both reject",
+   "source": "drop",
+   "analysis": [
+    "collision"
+   ],
+   "validator": "InterpreterError: move statement is not executable:",
+   "n": 2
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "collision",
+    "inconsistent-lanes"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [LaneGroupInconsistentError('lane group i",
+   "n": 1
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "empty-source",
+    "inconsistent-lanes"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [LaneGroupInconsistentError('lane group i",
+   "n": 1
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "collision",
+    "empty-source"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [DuplicateLaneAddressError('duplicate lan",
+   "n": 1
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [InvalidLaneAddressError('invalid lane: w",
+   "n": 1
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "inconsistent-lanes"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [LaneGroupInconsistentError('lane group i",
+   "n": 1
+  },
+  {
+   "verdict": "both reject",
+   "source": "retarget",
+   "analysis": [
+    "empty-source",
+    "invalid-lane"
+   ],
+   "validator": "AssertionError: check_lanes rejected (<addr>, <addr>): [InvalidLaneAddressError('invalid lane: w",
+   "n": 1
+  }
+ ],
+ "empty_source_sets": {
+  "all lanes empty / both reject": 591,
+  "all lanes empty / only analysis rejects": 135,
+  "some lanes empty / both reject": 39,
+  "some lanes empty / only analysis rejects": 10
+ },
+ "total": {
+  "both accept": 2808,
+  "both reject": 253,
+  "only analysis rejects": 71,
+  "only validator rejects": 0
+ },
+ "no_output": {
+  "astar": 0,
+  "dfs": 0,
+  "bfs": 0,
+  "ids": 0,
+  "greedy": 0,
+  "push-rotate": 0,
+  "entropy": 0,
+  "cascade-ids": 0,
+  "cascade-dfs": 0,
+  "cascade-entropy": 0,
+  "pipeline_default": 0,
+  "pipeline_route_all": 0,
+  "loose_goal": 2,
+  "receding_horizon": 2
+ },
+ "disagreements": [
+  {
+   "verdict": "only analysis rejects",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "source": "swap",
+   "count": 35,
+   "example": {
+    "source": "swap",
+    "strategy": "astar",
+    "example": 83,
+    "how": "swapped the lanes of move sets 7 and 5 of 8",
+    "analysis": [
+     "empty-source"
+    ],
+    "validator": "",
+    "empty_sets": [
+     [
+      2,
+      2
+     ],
+     [
+      2,
+      2
+     ]
+    ]
+   }
+  },
+  {
+   "verdict": "only analysis rejects",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "source": "drop",
+   "count": 21,
+   "example": {
+    "source": "drop",
+    "strategy": "astar",
+    "example": 193,
+    "how": "dropped move set 2 of 4",
+    "analysis": [
+     "empty-source"
+    ],
+    "validator": "",
+    "empty_sets": [
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "verdict": "only analysis rejects",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "source": "retarget",
+   "count": 11,
+   "example": {
+    "source": "retarget",
+    "strategy": "ids",
+    "example": 10,
+    "how": "lane 0 of move set 3: 0xa000000000000002 -> 0x8000000100010001 (another lane from the programs)",
+    "analysis": [
+     "empty-source"
+    ],
+    "validator": "",
+    "empty_sets": [
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "verdict": "only analysis rejects",
+   "analysis": [
+    "empty-source"
+   ],
+   "validator": "",
+   "source": "compiled",
+   "count": 4,
+   "example": {
+    "source": "compiled",
+    "strategy": "loose_goal",
+    "example": 185,
+    "analysis": [
+     "empty-source"
+    ],
+    "validator": "",
+    "empty_sets": [
+     [
+      2,
+      4
+     ]
+    ]
+   }
+  }
+ ]
+}

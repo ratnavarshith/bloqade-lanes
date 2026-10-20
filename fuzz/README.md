@@ -110,6 +110,26 @@ category has a saved minimal repro it is only counted, and the driver repeats
 until a pass of the requested number of kernels ends with no new category. The
 reported counts are from that last pass.
 
+## Occupancy analysis and differential test
+
+`lanes_fuzz.occupancy` is a small Kirin forward analysis over move IR, independent
+of the Rust validator: per site `empty / atom id / unknown`, reporting a move from
+an empty site, a move into an occupied site, lanes of one move set that disagree on
+zone, bus, move type or direction, and lanes that are not in the architecture. It
+does not check final occupancy: the IR carries the initial layout (`Fill`) but no
+expected final one.
+
+```bash
+uv run --locked pytest tests/test_occupancy.py tests/test_diff.py
+uv run --locked python -m lanes_fuzz.diff --examples 200 --jobs 4 --out results/diff.json
+```
+
+`lanes_fuzz.diff` compiles the same random Clifford kernels with every strategy,
+then makes mutants (drop / duplicate / retarget / swap) of the outputs, and judges
+each program with both the analysis and the Rust validator. The agreement table is
+in `results/diff.json`; `repros/validator/` holds a repro for the one validator
+behaviour the comparison turned up.
+
 ## Layout
 
 ```
@@ -121,6 +141,8 @@ src/lanes_fuzz/props.py       Hypothesis property, passes, summaries
 src/lanes_fuzz/repro.py       standalone repro scripts
 src/lanes_fuzz/run.py         command line runner
 src/lanes_fuzz/plant.py       deliberate bugs, for the self-tests
+src/lanes_fuzz/occupancy.py   Kirin forward analysis of site occupancy on move IR
+src/lanes_fuzz/diff.py        analysis vs Rust validator on outputs and mutants
 tests/                        generator, equivalence, classification, planted bugs
 repros/                       minimal repro scripts
 results/                      JSON summaries of the recorded runs
