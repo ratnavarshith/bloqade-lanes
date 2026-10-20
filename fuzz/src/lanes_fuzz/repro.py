@@ -96,10 +96,7 @@ def reproduce() -> str:
         if CLIFFORD:
             equal, kind = tableaus_equal(main, lifted), "tableau"
         else:
-            equal = statevectors_equal_up_to_phase(
-                statevector(main), statevector(lifted)
-            )
-            kind = "statevector"
+            equal, kind = nonclifford_equal(main, lifted)
     except Exception as exc:  # noqa: BLE001
         return "equivalence-crash: " + signature(exc)
     return "ok" if equal else "equivalence: " + kind + " differs"

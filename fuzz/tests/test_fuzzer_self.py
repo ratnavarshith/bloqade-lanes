@@ -37,17 +37,19 @@ def test_a_wrong_gate_after_lowering_is_caught_by_the_tableau_check(strategy):
     assert outcome.category == "equivalence: tableau differs"
 
 
-def test_a_wrong_gate_is_caught_by_the_statevector_check():
+def test_a_wrong_gate_is_caught_by_the_unitary_check():
     assert check_kernel(ROTATED, "astar").status == "ok"
     outcome = check_kernel(ROTATED, "astar", plant=plant_extra_x)
-    assert outcome.category == "equivalence: statevector differs"
+    assert outcome.category == "equivalence: unitary differs"
 
 
-def test_statevector_check_is_blind_to_x_on_a_plus_state():
-    """Documented limitation: X|+> = |+>, so this planted bug is invisible to a
-    statevector comparison on |0...0> (and visible to the tableau check)."""
+def test_unitary_check_catches_x_on_a_plus_state():
+    """The old statevector check on |0...0> missed this: X|+> = |+>. The unitary
+    comparison sees X on every other input, so the same planted bug is caught."""
     spec = KernelSpec(2, (("h", 0), ("h", 1), ("t", 1)), measure=False)
-    assert check_kernel(spec, "astar", plant=plant_extra_x).status == "ok"
+    assert check_kernel(spec, "astar").status == "ok"
+    outcome = check_kernel(spec, "astar", plant=plant_extra_x)
+    assert outcome.category == "equivalence: unitary differs"
 
 
 def _break_first_move(move_mt: ir.Method) -> ir.Method:

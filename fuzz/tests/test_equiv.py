@@ -63,3 +63,54 @@ def test_statevector_of_a_rotation_kernel_is_normalized(k):
     state = equiv.statevector(build_kernel(spec))
     assert state.shape == (4,)
     assert abs(np.linalg.norm(state) - 1) < 1e-6
+
+
+H_CZ_H_ONLY_CZ = KernelSpec(2, (("cz", 0, 1),), measure=False)
+T_ON_PLUS = KernelSpec(2, (("h", 0), ("h", 1), ("t", 1)), measure=False)
+
+
+def test_unitary_check_accepts_the_same_unitary_written_differently():
+    assert equiv.unitaries_equal(build_kernel(CX), build_kernel(H_CZ_H))
+
+
+def test_unitary_check_rejects_a_different_unitary():
+    assert not equiv.unitaries_equal(build_kernel(CX), build_kernel(H_CZ_H_ONLY_CZ))
+
+
+def test_unitary_check_sees_a_relative_phase_between_columns():
+    # S differs from identity only by a phase on |1>: invisible from |0>.
+    s_gate = KernelSpec(1, (("s", 0),), measure=False)
+    identity = KernelSpec(1, (("h", 0), ("h", 0)), measure=False)
+    assert equiv.statevectors_equal_up_to_phase(
+        equiv.statevector(build_kernel(s_gate)),
+        equiv.statevector(build_kernel(identity)),
+    )
+    assert not equiv.unitaries_equal(build_kernel(s_gate), build_kernel(identity))
+
+
+def _lowered(spec):
+    from lanes_fuzz.check import compile_to_move
+    from lanes_fuzz.strategies import build_strategy, physical_arch
+
+    from bloqade.lanes.transform import MoveToSquinPhysical
+
+    kernel = build_kernel(spec)
+    move_mt = compile_to_move(kernel, build_strategy("astar"), False)
+    return kernel, MoveToSquinPhysical(physical_arch()).emit(move_mt, no_raise=False)
+
+
+def test_unitary_check_rejects_what_one_statevector_cannot_see():
+    """A stray X on the |+> qubit leaves the state from |00> unchanged."""
+    from lanes_fuzz.plant import plant_extra_x
+
+    kernel, lifted = _lowered(T_ON_PLUS)
+    planted = plant_extra_x(lifted)
+    assert equiv.statevectors_equal_up_to_phase(
+        equiv.statevector(kernel), equiv.statevector(planted)
+    )
+    assert not equiv.unitaries_equal(kernel, planted)
+
+
+def test_unitary_works_on_a_lowered_kernel_with_qubit_new_statements():
+    kernel, lifted = _lowered(T_ON_PLUS)
+    assert equiv.unitaries_equal(kernel, lifted)

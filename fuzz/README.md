@@ -68,7 +68,7 @@ disjoint qubits, straight-line code, one terminal `measure` of all qubits.
 | mode | gates | measure | check |
 |---|---|---|---|
 | `clifford` | H, S, X, Z, CZ, CX, broadcast CZ | terminal measure of all qubits | Stim tableau |
-| `nonclifford` (at most 6 qubits) | the above plus T, RZ, RX (multiples of pi/8) | none | statevector |
+| `nonclifford` (at most 6 qubits) | the above plus T, RZ, RX (multiples of pi/8) | none | full unitary |
 
 Size (`min/max_qubits`, `min/max_ops`) and the gate mix (`weights`) are
 parameters of `GenConfig`.
@@ -99,7 +99,7 @@ parameters of `GenConfig`.
   apart from failures. The allow-list is `lanes_fuzz.check.expected_category`.
 * failures: `compile: ...` (any other exception), `not lowered: place.CZ left`,
   `validator: ...`, `to-squin: ...`, `equivalence-crash: ...`,
-  `equivalence: tableau|statevector differs`.
+  `equivalence: tableau|unitary|statevector differs`.
 
 ## How the run works
 
@@ -115,7 +115,7 @@ reported counts are from that last pass.
 ```
 src/lanes_fuzz/gen.py         kernel generator (Hypothesis strategy, rendering)
 src/lanes_fuzz/strategies.py  the 14 lanes strategies as expressions
-src/lanes_fuzz/equiv.py       Stim tableau and statevector comparison
+src/lanes_fuzz/equiv.py       Stim tableau, unitary and statevector comparison
 src/lanes_fuzz/check.py       compile + lowering + validator + equivalence
 src/lanes_fuzz/props.py       Hypothesis property, passes, summaries
 src/lanes_fuzz/repro.py       standalone repro scripts

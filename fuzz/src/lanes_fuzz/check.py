@@ -14,7 +14,7 @@ Order of checks (the first that fails decides the outcome):
    and each lane group also goes through ``ArchSpec.check_lanes`` (Rust: group
    consistency, bus membership, AOD geometry).
 4. **to-squin** - ``MoveToSquinPhysical`` turns the move IR back into squin.
-5. **equivalence** - Stim tableau (Clifford) or statevector (non-Clifford) of the
+5. **equivalence** - Stim tableau (Clifford) or full unitary (non-Clifford) of the
    original kernel against the lowered-and-lifted one, see :mod:`lanes_fuzz.equiv`.
 """
 
@@ -176,10 +176,7 @@ def check_kernel(
             equal = equiv.tableaus_equal(kernel, lifted)
             kind = "tableau"
         else:
-            equal = equiv.statevectors_equal_up_to_phase(
-                equiv.statevector(kernel), equiv.statevector(lifted)
-            )
-            kind = "statevector"
+            equal, kind = equiv.nonclifford_equal(kernel, lifted)
     except Exception as exc:  # noqa: BLE001
         return done("failure", f"equivalence-crash: {signature(exc)}", repr(exc))
     if not equal:
