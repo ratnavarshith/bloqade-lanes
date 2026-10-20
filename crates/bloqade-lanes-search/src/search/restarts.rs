@@ -372,46 +372,27 @@ where
                     // One monomorphization per bound rather than a runtime
                     // branch, so the bound-disabled arm compiles to the same
                     // code as having no bounding at all (`NoBound::TRIVIAL`).
+                    macro_rules! entropy {
+                        ($bound:expr) => {
+                            crate::drivers::entropy::entropy_search_with_tables(
+                                root.clone(),
+                                goal,
+                                &entropy_params,
+                                ctx,
+                                budget,
+                                None,
+                                seed,
+                                observer,
+                                entropy_tables,
+                                &objective,
+                                $bound,
+                            )
+                        };
+                    }
                     match (completion_bound, bus_cut_bound) {
-                        (Some(bound), _) => crate::drivers::entropy::entropy_search_with_tables(
-                            root.clone(),
-                            goal,
-                            &entropy_params,
-                            ctx,
-                            budget,
-                            None,
-                            seed,
-                            observer,
-                            entropy_tables,
-                            &objective,
-                            bound,
-                        ),
-                        (None, Some(bound)) => crate::drivers::entropy::entropy_search_with_tables(
-                            root.clone(),
-                            goal,
-                            &entropy_params,
-                            ctx,
-                            budget,
-                            None,
-                            seed,
-                            observer,
-                            entropy_tables,
-                            &objective,
-                            bound,
-                        ),
-                        (None, None) => crate::drivers::entropy::entropy_search_with_tables(
-                            root.clone(),
-                            goal,
-                            &entropy_params,
-                            ctx,
-                            budget,
-                            None,
-                            seed,
-                            observer,
-                            entropy_tables,
-                            &objective,
-                            &no_bound,
-                        ),
+                        (Some(bound), _) => entropy!(bound),
+                        (None, Some(bound)) => entropy!(bound),
+                        (None, None) => entropy!(&no_bound),
                     }
                 };
                 let mut solve = extract(result, 0, budget, ctx, goal);
