@@ -147,9 +147,10 @@ At the failing root (Phase 2b diag): n_atoms 28, h0 4, |R| 8, h 8, status `Budge
 | main | 4c1446a0 | |
 | bus-cut-bound | 8cc37d2f | 4c1446a0 |
 | bus-cut-strong | c4e2ed74 | 4c1446a0 |
-| bus-cut-diag | 17dd39ae (the commit adding this file is on top) | c4e2ed74 |
+| bus-cut-diag | 0806c77a (the commit adding the Phase 4b results is on top) | c4e2ed74 |
 | fix-budget-error | c925bce1 | 4c1446a0 |
 | fix-spec-comment | e8ce2fe3 | 4c1446a0 |
+| fuzz | 96da4ca0 | 4c1446a0 |
 
 ## Phase 4a: property fuzzer (branch `fuzz`, HEAD `16194db7`, base `4c1446a`)
 
@@ -209,3 +210,68 @@ Rate: Clifford run 23/500 = 4.6% per refusing strategy; stress run 6/100 = 6.0%;
 - Equivalence: tableau ignores measurement records; statevector compares the output on |0...0> only.
 - Arch: built-in Gemini physical spec only (1 zone, 0 zone buses); the multi-zone specs are rejected by the physical strategies (Phase 2b).
 - Strategies run with the knobs in `fuzz/src/lanes_fuzz/strategies.py`; default `max_expansions` where the matrix sets none.
+
+## Phase 4b: occupancy analysis vs the Rust validator (branch `fuzz`, HEAD `96da4ca0`, base `4c1446a`)
+
+Environment: `fuzz/` project, `uv sync --locked --reinstall-package bloqade-lanes` (native extension rebuilt from the checkout; the checkout differs from `main` only under `fuzz/`). `cd fuzz && uv run --locked pytest` gave 83 passed (52 before). The non-Clifford fuzz run was not repeated.
+
+```
+cd fuzz && uv run --locked python -m lanes_fuzz.diff --examples 200 --jobs 4 --mutants-per-kind 6 --out results/diff.json   # 205 s
+```
+
+Two runs of that command gave identical totals. Raw results: `fuzz/results/diff.json`.
+
+### 0. Equivalence fix
+
+Non-Clifford kernels of at most 6 qubits are now compared as full unitaries up to global phase (`equiv.unitaries_equal`, `equiv.nonclifford_equal`). Category `equivalence: unitary differs` replaces `statevector differs` for them; kernels over 6 qubits would still use one statevector (the generator never makes them).
+
+- **Method:** `pyqrack` gives every run a random global phase, so the columns of a unitary cannot be assembled from separate runs. Both kernels are run from each basis state `|b>` and from `(|0> + |b>)/sqrt 2` (`X`, `H`, `CX` inserted after the allocation). Each probe is compared up to its own phase. The basis probes fix every column; the superposition probes tie each column's phase to column 0. That costs `2^(n+1) - 1` runs per kernel.
+- **Blind-spot self-test:** `h; h; t` with a stray `X` on qubit 0 was missed by the statevector check. `test_unitary_check_catches_x_on_a_plus_state` now asserts `equivalence: unitary differs` for it, and that the unplanted kernel is `ok`. The statevector-blind case is also pinned in `tests/test_equiv.py`.
+
+### 1. Analysis
+
+`fuzz/src/lanes_fuzz/occupancy.py`: `OccupancyAnalysis(Forward[Occupancy])`, with a `Layout` lattice (site -> atom id or unknown, absent = empty; bottom `Unreached`, top `Anything`). It reports, per `move.Move`:
+
+| kind | meaning |
+|---|---|
+| `empty-source` | lanes of the set whose source site is empty (once per set) |
+| `collision` | a lane lands on an occupied site that no lane of the set vacates, or two lanes land on one site (a `Fill` onto an occupied site too) |
+| `inconsistent-lanes` | lanes of one set differ in zone, bus, move type or direction |
+| `invalid-lane` | not a lane of the arch (needed to resolve endpoints; not in the brief) |
+
+Final occupancy is **not** checked: the IR holds the initial layout (`Fill`) but no expected final one. Sites involved in a reported violation become unknown so one error is not reported again downstream. 18 unit tests on hand-built move IR (`tests/test_occupancy.py`).
+
+### 2. Agreement table
+
+3132 programs: 2796 compiler outputs (200 Clifford kernels, 2-6 qubits, 14 strategies; 4 gave no output, 2 each from `loose_goal` and `receding_horizon`, the documented bystander refusal) and 336 mutants (6 per kind per strategy: 24 x 14, from those outputs).
+
+| source | n | both accept | both reject | only analysis rejects | only validator rejects |
+|---|---|---|---|---|---|
+| compiler outputs | 2796 | 2792 | 0 | 4 | 0 |
+| drop a move set | 84 | 12 | 51 | 21 | 0 |
+| duplicate a move set | 84 | 0 | 84 | 0 | 0 |
+| retarget a lane | 84 | 0 | 73 | 11 | 0 |
+| swap two move sets | 84 | 4 | 45 | 35 | 0 |
+| **total** | 3132 | 2808 | 253 | 71 | 0 |
+
+The validator is `rust_validate` in `check.py` (`check_lane_group` on every set, then the atom interpreter's `validate_moves` replay).
+
+### Disagreements
+
+All 71 are one case: the analysis reports only `empty-source`, no other violation, and the validator accepts.
+
+- **Cause.** `AtomStateData::validate_moves` (`crates/bloqade-lanes-bytecode-core/src/atom_state.rs`, doc comment on `validate_moves`) deliberately allows a lane with an empty source and a free destination: "empty-source lanes whose destination is also free are legal no-ops (AOD rectangle filler)". My rule ("a move from an empty site is a violation") is stricter. Since the validator accepted, every empty-source lane in these programs had a free destination, which is exactly the legal-no-op case. No other mechanism is involved.
+- **4 compiler outputs: a bug in my analysis relative to the real semantics.** They contain AOD rectangle fillers. Example: `loose_goal`, kernel #185 (5 qubits), move set 19 is a 4-lane rectangle `(1,0)->(1,2), (1,4)->(1,6), (5,0)->(5,2), (5,4)->(5,6)`, of which two lanes start from empty sites. The brief's rule over-rejects valid compiler output; I left it as specified. Flagging only sets in which no lane has an atom would remove these four.
+- **67 mutants (21 drop, 11 retarget, 35 swap): a property only the analysis checks.** Dropping or swapping sets leaves later sets whose sources are empty, and the validator takes them as fillers. By set count (a record can hold several sets) 135 of the empty-source sets in the 71 records have every lane empty (nothing moves) and 10 have some lanes empty.
+- **Validator gap?** Not confirmed as a bug, because the filler rule is needed and documented. One consequence is real: nothing requires a move set to move at least one atom, so a dropped or swapped set validates silently and only the equivalence check would notice. Minimal repro saved (below).
+- **Validator-only rejects: 0.** That is not evidence the analysis covers the validator: AOD geometry and bus membership are not checked by the analysis, and none of the mutants isolated them (every retargeted lane the validator rejected also tripped `invalid-lane`, `collision` or `inconsistent-lanes` in the analysis).
+- **Same verdict, different reason (253 both-reject).** All 84 duplicates: the second run starts from empty sites onto sites now occupied. The validator reports a destination occupied by a stationary atom; the analysis reports `empty-source` only, because it does not judge the destination of an empty-source lane. 39 of the both-reject cases also carry a `collision` in the analysis; the validator rejected all of them.
+- **Both accept (16 mutants: 12 drop, 4 swap).** The mutated program is still executable; whether it computes the same circuit is the equivalence check's question, not asked here.
+
+### Repro list
+
+| file | what |
+|---|---|
+| `fuzz/repros/validator/empty_source_move_set_accepted.py` | the validator accepts a move set in which no atom moves (exit 1, `REPRODUCED`, while it does) |
+
+No other repro: the fuzzer itself found no new failure category (this phase made no new equivalence runs).
