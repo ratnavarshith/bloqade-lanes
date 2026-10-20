@@ -369,11 +369,25 @@ where
                             Some(trace) => trace,
                             None => &mut noop,
                         };
-                    // One monomorphization per bound rather than a runtime
-                    // branch, so the bound-disabled arm compiles to the same
-                    // code as having no bounding at all (`NoBound::TRIVIAL`).
-                    macro_rules! entropy {
-                        ($bound:expr) => {
+                    // Two monomorphizations rather than a runtime branch, so
+                    // the bound-disabled arm compiles to the same code as
+                    // having no bounding at all (`NoBound::TRIVIAL`).
+                    match completion_bound {
+                        Some(bound) => crate::drivers::entropy::entropy_search_with_tables(
+                            root.clone(),
+                            goal,
+                            &entropy_params,
+                            ctx,
+                            budget,
+                            None,
+                            seed,
+                            observer,
+                            entropy_tables,
+                            &objective,
+                            bound,
+                        ),
+                        // The bus-cut bound is a third type, so a third instance.
+                        None if bus_cut_bound.is_some() => {
                             crate::drivers::entropy::entropy_search_with_tables(
                                 root.clone(),
                                 goal,
@@ -385,14 +399,22 @@ where
                                 observer,
                                 entropy_tables,
                                 &objective,
-                                $bound,
+                                bus_cut_bound.expect("guarded by is_some"),
                             )
-                        };
-                    }
-                    match (completion_bound, bus_cut_bound) {
-                        (Some(bound), _) => entropy!(bound),
-                        (None, Some(bound)) => entropy!(bound),
-                        (None, None) => entropy!(&no_bound),
+                        }
+                        None => crate::drivers::entropy::entropy_search_with_tables(
+                            root.clone(),
+                            goal,
+                            &entropy_params,
+                            ctx,
+                            budget,
+                            None,
+                            seed,
+                            observer,
+                            entropy_tables,
+                            &objective,
+                            &no_bound,
+                        ),
                     }
                 };
                 let mut solve = extract(result, 0, budget, ctx, goal);
@@ -441,38 +463,53 @@ where
         let astar_move_gen = make_generator(0, frontier_deadlock_policy(deadlock_policy));
         let mut astar_f = PriorityFrontier::astar(h_max, weight);
         // The bound gate (`SolveOptions::cascade_bound`), for point goals only:
-        // a set-valued goal has no admissible target-distance bound. Which
-        // bound gates is `EntropyOptions::completion_bound`; unset, it is `h0`.
-        let refine_targets = opts.cascade_bound.then(|| goal.exact_targets()).flatten();
-        let refine_bus_cut = refine_targets
-            .filter(|_| bound_kind == Some(BoundKind::BusCut))
-            .map(|targets| BusCutBound::new(&objective, targets, ctx.index, ctx.blocked));
-        let refine_h0 = refine_targets
+        // a set-valued goal has no admissible target-distance bound.
+        let refine_bound = opts
+            .cascade_bound
+            .then(|| goal.exact_targets())
+            .flatten()
             .filter(|_| bound_kind != Some(BoundKind::BusCut))
             .map(|targets| WeightedDistanceBound::new(&objective, targets, ctx.index, ctx.blocked));
-        macro_rules! refine {
-            ($bound:expr) => {
-                crate::drivers::frontier::run_search_bounded(
-                    root.clone(),
-                    &astar_move_gen,
-                    &DistanceScorer,
-                    &objective,
-                    goal,
-                    &mut astar_f,
-                    ctx,
-                    &mut SearchState::default(),
-                    &mut NoOpObserver,
-                    max_expansions,
-                    None,
-                    max_cost,
-                    $bound,
-                )
-            };
-        }
-        let astar_result = match (&refine_h0, &refine_bus_cut) {
-            (Some(bound), _) => refine!(bound),
-            (None, Some(bound)) => refine!(bound),
-            (None, None) => run_frontier(
+        // `EntropyOptions::completion_bound` names the bound that gates it; unset,
+        // it is `h0`.
+        let refine_bus_cut = opts
+            .cascade_bound
+            .then(|| goal.exact_targets())
+            .flatten()
+            .filter(|_| bound_kind == Some(BoundKind::BusCut))
+            .map(|targets| BusCutBound::new(&objective, targets, ctx.index, ctx.blocked));
+        let astar_result = match &refine_bound {
+            Some(bound) => crate::drivers::frontier::run_search_bounded(
+                root.clone(),
+                &astar_move_gen,
+                &DistanceScorer,
+                &objective,
+                goal,
+                &mut astar_f,
+                ctx,
+                &mut SearchState::default(),
+                &mut NoOpObserver,
+                max_expansions,
+                None,
+                max_cost,
+                bound,
+            ),
+            None if refine_bus_cut.is_some() => crate::drivers::frontier::run_search_bounded(
+                root.clone(),
+                &astar_move_gen,
+                &DistanceScorer,
+                &objective,
+                goal,
+                &mut astar_f,
+                ctx,
+                &mut SearchState::default(),
+                &mut NoOpObserver,
+                max_expansions,
+                None,
+                max_cost,
+                refine_bus_cut.as_ref().expect("guarded by is_some"),
+            ),
+            None => run_frontier(
                 &root,
                 &astar_move_gen,
                 goal,
