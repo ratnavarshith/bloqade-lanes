@@ -150,3 +150,62 @@ At the failing root (Phase 2b diag): n_atoms 28, h0 4, |R| 8, h 8, status `Budge
 | bus-cut-diag | 17dd39ae (the commit adding this file is on top) | c4e2ed74 |
 | fix-budget-error | c925bce1 | 4c1446a0 |
 | fix-spec-comment | e8ce2fe3 | 4c1446a0 |
+
+## Phase 4a: property fuzzer (branch `fuzz`, HEAD `16194db7`, base `4c1446a`)
+
+Environment: `fuzz/` project, `uv sync --locked`; hypothesis 6.152.5, stim 1.16.0, kirin-toolchain 0.22.16, bloqade-circuit 0.15.2.
+Fuzzer tests: `cd fuzz && uv run --locked pytest` gave 52 passed.
+
+```
+cd fuzz && uv sync --locked
+uv run --locked python -m lanes_fuzz.run --mode clifford    --examples 500 --jobs 4 --repro-dir repros/clifford    --out results/clifford.json
+uv run --locked python -m lanes_fuzz.run --mode nonclifford --examples 100 --jobs 4 --repro-dir repros/nonclifford --out results/nonclifford.json
+uv run --locked python -m lanes_fuzz.run --mode clifford --examples 100 --max-qubits 14 --max-ops 40 --jobs 4 --seed 1 --repro-dir repros/clifford-large --out results/clifford-large.json
+```
+
+### Runs (14 strategies each, 4 processes)
+
+| run | size | strategies | examples | ok | expected refusal | real failures | wall s |
+|---|---|---|---|---|---|---|---|
+| Clifford | 2-6 qubits, 1-12 ops | 14 | 7000 | 6954 | 46 | 0 | 705.6 |
+| non-Clifford | 2-6 qubits, 1-12 ops | 14 | 1400 | 1400 | 0 | 0 | 135.0 |
+| Clifford stress | 2-14 qubits, 1-40 ops | 14 | 1400 | 1388 | 12 | 0 | 168.1 |
+
+Per-strategy wall seconds (Clifford run): astar 147.0, dfs 146.0, bfs 147.6, ids 146.5, greedy 141.2, push-rotate 141.3, entropy 159.9, cascade-ids 141.7, cascade-dfs 159.6, cascade-entropy 165.3, pipeline_default 207.5, pipeline_route_all 253.1, loose_goal 241.3, receding_horizon 243.9.
+
+### Expected refusal: `PlacementError` "would spuriously entangle ... bystanders"
+
+| run | strategy | refusals in final pass | examples in final pass | passes | minimal kernel (qubits / ops) |
+|---|---|---|---|---|---|
+| Clifford | loose_goal | 23 | 500 | 2 | 4 / 3 |
+| Clifford | receding_horizon | 23 | 500 | 2 | 4 / 3 |
+| non-Clifford | loose_goal | 0 | 100 | 2 | 5 / 3 |
+| non-Clifford | receding_horizon | 0 | 100 | 2 | 4 / 2 |
+| Clifford stress | loose_goal | 6 | 100 | 2 | 4 / 2 |
+| Clifford stress | receding_horizon | 6 | 100 | 2 | 4 / 2 |
+
+All other strategies: 0 expected refusals and 0 failures in every run.
+Categories checked for: compile exception, `place.CZ` left, Rust validator rejection (`check_lanes` or `validate_moves`), move-to-squin exception, equivalence crash, tableau or statevector mismatch. Count of each outside the table above: 0.
+Rate: Clifford run 23/500 = 4.6% per refusing strategy; stress run 6/100 = 6.0%; non-Clifford final pass 0/100 (category found in pass 1 and shrunk).
+
+### Planted-bug results
+
+| planted bug | check expected to catch it | result |
+|---|---|---|
+| stray X on first qubit after lowering, kernel `h; cx; cx` with terminal measure, all 14 strategies | Stim tableau | 14 of 14 `equivalence: tableau differs`; unplanted control `ok` on 14 of 14 |
+| same bug, kernel `rx(pi/8); cx`, `astar` | statevector | `equivalence: statevector differs` |
+| same bug on `h; h; t` (qubit 0 left in `|+>`) | statevector | not detected (X\|+> = \|+>): documented blind spot |
+| lane group mixing a site-bus and a word-bus lane in the move IR, `astar` | Rust validator | `validator: ...`, detail contains `check_lanes` |
+| planted X, driver with `astar`, 30 examples | Hypothesis shrinking | 1 category, minimal kernel 2 qubits / 1 op (the config minimum) |
+| planted X, saved repro run as a script | standalone repro | exit 1, `REPRODUCED` |
+
+### Coverage limits of the generator
+
+- Gates: H, S, X, Z, CZ, CX, broadcast CZ; non-Clifford mode adds T, RZ, RX with angles k*pi/8, k in -7..8.
+- One register from `squin.qalloc`; straight-line code; no loops, branches, helper functions or multiple registers.
+- Measurement: a single terminal `measure` of all qubits in Clifford mode; none in non-Clifford mode; no mid-circuit measurement, reset or classical control.
+- Not generated: `u3`, `cy`, `swap`, `sqrt_*`, `ccz`, noise statements.
+- Size: Clifford at most 14 qubits (stress) and 40 ops; non-Clifford at most 6 qubits and 12 ops.
+- Equivalence: tableau ignores measurement records; statevector compares the output on |0...0> only.
+- Arch: built-in Gemini physical spec only (1 zone, 0 zone buses); the multi-zone specs are rejected by the physical strategies (Phase 2b).
+- Strategies run with the knobs in `fuzz/src/lanes_fuzz/strategies.py`; default `max_expansions` where the matrix sets none.
